@@ -12,22 +12,36 @@
   </head>
   <body>
     <!-- Top Header -->
-    <header class="header">
-      <div class="brand">
-        <img src="/src-tauri/icons/32x32.png" alt="Animated Linux Logo" class="brand-icon" id="brand-icon" />
-        <span class="brand-title">Animated Linux</span>
-        <span class="brand-badge">Git Edition</span>
+    <header class="header" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>
+        <img src="/src-tauri/icons/32x32.png" alt="Animated Linux Logo" class="brand-icon" id="brand-icon" data-tauri-drag-region />
+        <span class="brand-title" data-tauri-drag-region>Animated Linux</span>
+        <span class="brand-badge" data-tauri-drag-region>Git Edition</span>
       </div>
 
-      <div class="header-actions">
-        <button class="btn btn-primary" id="btn-import">
-          <span id="icon-import-slot"></span>
-          <span>Import Video</span>
-        </button>
-        <button class="btn btn-secondary btn-header-exit" id="btn-header-exit" title="Exit Animated Linux (Stops wallpaper and quits)">
-          <span id="icon-exit-slot"></span>
-          <span>Exit</span>
-        </button>
+      <div class="header-right" data-tauri-drag-region="false">
+        <div class="header-actions" data-tauri-drag-region="false">
+          <button class="btn btn-primary" id="btn-import" data-tauri-drag-region="false">
+            <span id="icon-import-slot"></span>
+            <span>Import Video</span>
+          </button>
+          <button class="btn btn-secondary btn-header-exit" id="btn-header-exit" title="Exit Animated Linux (Stops wallpaper and quits)" data-tauri-drag-region="false">
+            <span id="icon-exit-slot"></span>
+            <span>Exit</span>
+          </button>
+        </div>
+
+        <div class="window-controls" data-tauri-drag-region="false">
+          <button class="win-btn win-min" id="btn-win-min" title="Minimize" aria-label="Minimize" data-tauri-drag-region="false">
+            <span id="icon-win-min"></span>
+          </button>
+          <button class="win-btn win-max" id="btn-win-max" title="Maximize" aria-label="Maximize" data-tauri-drag-region="false">
+            <span id="icon-win-max"></span>
+          </button>
+          <button class="win-btn win-close" id="btn-win-close" title="Close" aria-label="Close" data-tauri-drag-region="false">
+            <span id="icon-win-close"></span>
+          </button>
+        </div>
       </div>
     </header>
 

@@ -593,6 +593,11 @@ fn toggle_maximize_window(window: tauri::WebviewWindow) {
     }
 }
 
+#[tauri::command]
+fn is_window_maximized(window: tauri::WebviewWindow) -> bool {
+    window.is_maximized().unwrap_or(false)
+}
+
 static SHOULD_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[tauri::command]
@@ -689,6 +694,7 @@ fn main() {
             add_to_steam_client,
             minimize_window,
             toggle_maximize_window,
+            is_window_maximized,
             hide_window,
             exit_app,
             open_storage_dir,

@@ -182,6 +182,10 @@ function renderStaticIcons() {
   setIcon('icon-compress-active-slot', Icons.zap);
   setIcon('icon-compress-all-slot', Icons.gauge);
 
+  setIcon('icon-win-min', Icons.winMin);
+  setIcon('icon-win-max', Icons.winMax);
+  setIcon('icon-win-close', Icons.winClose);
+
   btnTogglePlay.innerHTML = Icons.play;
   btnStopWp.innerHTML = Icons.stop;
 }
@@ -1142,6 +1146,73 @@ function setupWindowControls() {
       hideCloseDialog();
     }
   });
+
+  // Custom Frameless Window Controls
+  const btnWinMin = document.getElementById('btn-win-min');
+  const btnWinMax = document.getElementById('btn-win-max');
+  const btnWinClose = document.getElementById('btn-win-close');
+  const headerEl = document.querySelector('.header');
+
+  const updateMaximizeState = async () => {
+    if (!btnWinMax) return;
+    try {
+      const isMaximized = await invoke('is_window_maximized');
+      if (isMaximized) {
+        btnWinMax.innerHTML = Icons.winRestore;
+        btnWinMax.title = 'Restore';
+        btnWinMax.setAttribute('aria-label', 'Restore');
+        document.body.classList.add('maximized');
+      } else {
+        btnWinMax.innerHTML = Icons.winMax;
+        btnWinMax.title = 'Maximize';
+        btnWinMax.setAttribute('aria-label', 'Maximize');
+        document.body.classList.remove('maximized');
+      }
+    } catch (err) {
+      console.error('Failed to query window maximize state:', err);
+    }
+  };
+
+  if (btnWinMin) {
+    btnWinMin.addEventListener('click', () => {
+      invoke('minimize_window').catch(console.error);
+    });
+  }
+
+  if (btnWinMax) {
+    btnWinMax.addEventListener('click', async () => {
+      try {
+        await invoke('toggle_maximize_window');
+        setTimeout(updateMaximizeState, 50);
+      } catch (err) {
+        console.error('Failed to toggle maximize window:', err);
+      }
+    });
+  }
+
+  if (btnWinClose) {
+    btnWinClose.addEventListener('click', () => {
+      triggerCloseFlow();
+    });
+  }
+
+  if (headerEl) {
+    headerEl.addEventListener('dblclick', async (e) => {
+      if (e.target.closest('button, input, select, textarea, .nav-tab, .window-controls')) return;
+      try {
+        await invoke('toggle_maximize_window');
+        setTimeout(updateMaximizeState, 50);
+      } catch (err) {
+        console.error('Failed to toggle maximize on header dblclick:', err);
+      }
+    });
+  }
+
+  window.addEventListener('resize', () => {
+    updateMaximizeState();
+  });
+
+  updateMaximizeState();
 }
 
 // In-App Deletion Modal Logic

@@ -60,13 +60,10 @@ fi
 if [ -f "$RELEASE_BIN" ]; then
     echo "[Launcher] Starting optimized production release binary ($APP_BIN)..."
     exec "$RELEASE_BIN" "$@"
+elif [ -f "$ROOT_DIR/dist/animated-linux-x86_64" ]; then
+    echo "[Launcher] Starting standalone release binary from dist..."
+    exec "$ROOT_DIR/dist/animated-linux-x86_64" "$@"
+else
+    echo "[Error] Failed to build or find release binary."
+    exit 1
 fi
-
-# 4. Fallback debug binary
-if [ -f "$DEBUG_BIN" ]; then
-    echo "[Launcher] Starting debug binary ($APP_BIN)..."
-    exec "$DEBUG_BIN" "$@"
-fi
-
-echo "[Error] Failed to build or find binary."
-exit 1

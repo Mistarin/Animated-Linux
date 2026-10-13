@@ -8,6 +8,10 @@ APP_BIN="animated-linux"
 RELEASE_BIN="$ROOT_DIR/src-tauri/target/release/$APP_BIN"
 DEBUG_BIN="$ROOT_DIR/src-tauri/target/debug/$APP_BIN"
 
+# Force GTK and WebKitGTK to prefer dark theme
+export GTK_THEME="Adwaita:dark"
+export GTK_APPLICATION_PREFER_DARK_THEME="1"
+
 echo "================================================================"
 echo "          Animated Linux Launcher                               "
 echo "================================================================"

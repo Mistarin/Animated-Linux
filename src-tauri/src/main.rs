@@ -512,6 +512,12 @@ fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) {
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("GTK_THEME", "Adwaita:dark");
+        std::env::set_var("GTK_APPLICATION_PREFER_DARK_THEME", "1");
+    }
+
     let steam_mgr = SteamManager::new(480);
     let wallpaper_mgr = Arc::new(WallpaperManager::new());
     let workshop_mgr = WorkshopManager::new();

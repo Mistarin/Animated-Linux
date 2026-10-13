@@ -194,21 +194,23 @@
 
     <!-- Bottom Media Player Controls -->
     <footer class="player-bar">
-      <div class="player-info">
-        <img src="/src-tauri/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
-        <div style="overflow: hidden;">
-          <div class="player-title" id="now-playing-title">No Wallpaper Active</div>
-          <div class="player-sub" id="now-playing-sub">Select a wallpaper to play</div>
+      <div class="player-left">
+        <div class="player-info">
+          <img src="/src-tauri/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
+          <div style="overflow: hidden;">
+            <div class="player-title" id="now-playing-title">No Wallpaper Active</div>
+            <div class="player-sub" id="now-playing-sub">Select a wallpaper to play</div>
+          </div>
         </div>
-      </div>
 
-      <div class="player-controls">
-        <button class="ctrl-btn play-btn" id="btn-toggle-play" title="Play / Pause">
-          <!-- Injected via JS -->
-        </button>
-        <button class="ctrl-btn" id="btn-stop-wp" title="Stop & Restore Static Desktop">
-          <!-- Injected via JS -->
-        </button>
+        <div class="player-controls">
+          <button class="ctrl-btn play-btn" id="btn-toggle-play" title="Play / Pause">
+            <!-- Injected via JS -->
+          </button>
+          <button class="ctrl-btn" id="btn-stop-wp" title="Stop & Restore Static Desktop">
+            <!-- Injected via JS -->
+          </button>
+        </div>
       </div>
 
       <!-- Geometry, Quality, and Speed Controls (Zero audio controls) -->

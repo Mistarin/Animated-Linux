@@ -21,14 +21,15 @@
   --text-dim: #606068;
 
   /* Button & Accent Neutral Grayscale */
-  --btn-primary-bg: #f4f4f5;
-  --btn-primary-text: #0e0e11;
-  --btn-primary-hover: #ffffff;
+  --btn-primary-bg: #22222a;
+  --btn-primary-border: #363644;
+  --btn-primary-text: #f4f4f6;
+  --btn-primary-hover: #2c2c38;
 
-  --btn-secondary-bg: #1c1c21;
-  --btn-secondary-border: #2e2e36;
+  --btn-secondary-bg: #181820;
+  --btn-secondary-border: #282834;
   --btn-secondary-text: #e4e4e7;
-  --btn-secondary-hover: #27272f;
+  --btn-secondary-hover: #22222c;
 
   /* Functional */
   --status-online: #10b981;
@@ -139,11 +140,30 @@ body {
   background: var(--status-offline);
 }
 
-/* Clean Buttons */
+/* Universal Button Reset to eliminate GTK Light-Mode Theme Injections in WebKitGTK */
+button,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  background-color: #1a1a22 !important;
+  color: #f4f4f6 !important;
+  border: 1px solid #2e2e38 !important;
+  font-family: inherit;
+  outline: none;
+}
+
 .btn {
-  background: var(--btn-secondary-bg);
-  color: var(--btn-secondary-text);
-  border: 1px solid var(--btn-secondary-border);
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  background-color: #1a1a22 !important;
+  color: #f4f4f6 !important;
+  border: 1px solid #2e2e38 !important;
   border-radius: var(--radius-sm);
   padding: 6px 14px;
   font-size: 0.82rem;
@@ -157,26 +177,39 @@ body {
 }
 
 .btn:hover {
-  background: var(--btn-secondary-hover);
-  border-color: var(--border-hover);
-  color: var(--text-main);
+  background-color: #242430 !important;
+  border-color: #454556 !important;
+  color: #ffffff !important;
 }
 
 .btn-primary {
-  background: #22222a;
-  color: #f4f4f5;
-  border: 1px solid #383842;
+  background-color: #22222c !important;
+  color: #f4f4f6 !important;
+  border: 1px solid #363644 !important;
   font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: #2c2c36;
-  border-color: #52525e;
-  color: #ffffff;
+  background-color: #2c2c38 !important;
+  border-color: #555568 !important;
+  color: #ffffff !important;
+}
+
+.btn-secondary {
+  background-color: #181820 !important;
+  color: #d4d4d8 !important;
+  border: 1px solid #282834 !important;
+}
+
+.btn-secondary:hover {
+  background-color: #22222c !important;
+  border-color: #3e3e4e !important;
+  color: #ffffff !important;
 }
 
 .btn-optimize-ready {
-  background: #059669 !important;
+  background-color: #059669 !important;
+  background-image: none !important;
   color: #ffffff !important;
   border: 1px solid #10b981 !important;
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
@@ -196,14 +229,29 @@ body {
 }
 
 .btn-success {
-  background: var(--bg-card);
-  border: 1px solid var(--border-hover);
-  color: var(--text-main);
+  background-color: #152820 !important;
+  border: 1px solid #1e4535 !important;
+  color: #34d399 !important;
+}
+
+.btn-success:hover {
+  background-color: #1b352b !important;
+  border-color: #265944 !important;
+  color: #6ee7b7 !important;
 }
 
 .btn-icon {
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text-muted) !important;
   padding: 6px;
   border-radius: var(--radius-sm);
+}
+
+.btn-icon:hover {
+  background-color: #22222a !important;
+  border-color: #32323e !important;
+  color: #ffffff !important;
 }
 
 /* Nav Bar */
@@ -482,9 +530,12 @@ body {
 }
 
 .ctrl-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  color: var(--text-secondary);
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  background-color: #1c1c24 !important;
+  border: 1px solid #2e2e3a !important;
+  color: #d4d4d8 !important;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -496,22 +547,23 @@ body {
 }
 
 .ctrl-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border-hover);
-  color: var(--text-main);
+  background-color: #262632 !important;
+  border-color: #454556 !important;
+  color: #ffffff !important;
 }
 
 .ctrl-btn.play-btn {
   width: 42px;
   height: 42px;
-  background: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
+  background-color: #2b2b36 !important;
+  border: 1px solid #444456 !important;
+  color: #ffffff !important;
 }
 
 .ctrl-btn.play-btn:hover {
-  background: var(--btn-primary-hover);
-  color: #000;
+  background-color: #363644 !important;
+  border-color: #5d5d74 !important;
+  color: #ffffff !important;
 }
 
 .player-sliders {
@@ -694,9 +746,12 @@ select option {
 }
 
 .win-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text-muted) !important;
   border-radius: var(--radius-sm);
   width: 30px;
   height: 30px;
@@ -708,15 +763,15 @@ select option {
 }
 
 .win-btn:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-main);
-  border-color: var(--border-card);
+  background-color: #22222a !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-card) !important;
 }
 
 .win-btn-close:hover {
-  background: rgba(239, 68, 68, 0.16) !important;
+  background-color: rgba(239, 68, 68, 0.18) !important;
   color: #f87171 !important;
-  border-color: rgba(239, 68, 68, 0.35) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
 }
 
 /* Modal Overlay & Close Controls Dialog */
@@ -797,9 +852,12 @@ select option {
 }
 
 .modal-btn-close {
-  color: var(--text-dim);
-  border: none;
-  background: transparent;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  color: var(--text-dim) !important;
+  border: none !important;
+  background: transparent !important;
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -810,8 +868,8 @@ select option {
 }
 
 .modal-btn-close:hover {
-  color: var(--text-main);
-  background: var(--bg-card-hover);
+  color: var(--text-main) !important;
+  background-color: #22222a !important;
 }
 
 .modal-options-list {
@@ -821,8 +879,11 @@ select option {
 }
 
 .modal-option-card {
-  background: #1c1c23;
-  border: 1px solid #2b2b36;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  background-color: #1a1a22 !important;
+  border: 1px solid #2b2b36 !important;
   border-radius: 10px;
   padding: 14px 16px;
   display: flex;
@@ -831,30 +892,30 @@ select option {
   text-align: left;
   cursor: pointer;
   transition: all var(--transition-fast);
-  color: var(--text-main);
+  color: var(--text-main) !important;
   font-family: inherit;
   width: 100%;
 }
 
 .modal-option-card:hover {
-  background: #23232c;
-  border-color: #454556;
+  background-color: #22222c !important;
+  border-color: #454556 !important;
   transform: translateY(-1px);
 }
 
 .modal-option-card.recommended {
-  border-color: rgba(16, 185, 129, 0.32);
-  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.35) !important;
+  background-color: rgba(16, 185, 129, 0.05) !important;
 }
 
 .modal-option-card.recommended:hover {
-  border-color: rgba(16, 185, 129, 0.65);
-  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.65) !important;
+  background-color: rgba(16, 185, 129, 0.1) !important;
 }
 
 .modal-option-card.danger:hover {
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  background-color: rgba(239, 68, 68, 0.1) !important;
 }
 
 .modal-option-icon {

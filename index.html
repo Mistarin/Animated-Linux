@@ -52,10 +52,29 @@
       <!-- Library Tab -->
       <section id="tab-library">
         <div class="section-header">
-          <h2 class="section-title">Installed Wallpapers</h2>
-          <div class="search-input-wrapper">
-            <span class="search-icon" id="icon-search-slot"></span>
-            <input type="text" id="search-library" class="search-input" placeholder="Search wallpapers..." />
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h2 class="section-title">Installed Wallpapers</h2>
+            <span class="badge-count" id="library-count-badge">0</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <select id="select-library-sort" class="select-sort" title="Sort wallpapers">
+              <option value="recent">Recently Added</option>
+              <option value="title-asc">Name (A–Z)</option>
+              <option value="title-desc">Name (Z–A)</option>
+              <option value="duration">Duration</option>
+              <option value="res">Resolution</option>
+            </select>
+            <div class="search-input-wrapper">
+              <span class="search-icon" id="icon-search-slot"></span>
+              <input type="text" id="search-library" class="search-input" placeholder="Search (Ctrl+F)..." />
+              <button class="btn-clear-search hidden" id="btn-clear-search" title="Clear search">
+                <span id="icon-clear-search-slot"></span>
+              </button>
+            </div>
+            <button class="btn btn-secondary btn-header-folder" id="btn-open-folder" title="Open Wallpapers Storage Folder in File Manager">
+              <span id="icon-folder-slot"></span>
+              <span>Folder</span>
+            </button>
           </div>
         </div>
 
@@ -192,6 +211,29 @@
               </button>
             </div>
           </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
+
+          <!-- Storage & Cache Management -->
+          <div>
+            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Storage & Resolution Variants Cache</h3>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px;">
+              Manage stored video files and purge generated resolution variants to reclaim disk space. Original videos are never deleted.
+            </p>
+            <div style="background: var(--bg-surface); padding: 14px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);" id="cache-stats-text">Cached Variants: Calculating...</div>
+                <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 3px;">Stored in local application data directory.</div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" id="btn-clear-cache" title="Delete all generated Q1-Q4 variant files to free disk space">Clear Variants Cache</button>
+                <button class="btn btn-secondary" id="btn-open-folder-settings" title="Open wallpapers directory in system file manager">
+                  <span id="icon-folder-settings-slot"></span>
+                  <span>Open Storage Folder</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
@@ -199,7 +241,7 @@
     <!-- Bottom Media Player Controls -->
     <footer class="player-bar">
       <div class="player-left">
-        <div class="player-info">
+        <div class="player-info clickable" id="player-info-jump" title="Click to reveal active wallpaper in library" style="cursor: pointer;">
           <img src="/src-tauri/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
           <div style="overflow: hidden;">
             <div class="player-title" id="now-playing-title">No Wallpaper Active</div>
@@ -365,6 +407,38 @@
         </div>
       </div>
     </div>
+
+    <!-- In-App Delete Confirmation Modal -->
+    <div class="modal-overlay hidden" id="modal-delete-confirm">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title" style="max-width: 440px;">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-header-icon" style="background: rgba(220, 38, 38, 0.15); color: #f87171;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </div>
+            <div>
+              <h3 class="modal-title" id="modal-delete-title">Delete Wallpaper</h3>
+              <p class="modal-subtitle" id="modal-delete-desc">Are you sure you want to remove this wallpaper?</p>
+            </div>
+          </div>
+          <button class="btn btn-icon modal-btn-close" id="btn-cancel-delete-x" title="Dismiss">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div style="padding: 16px 20px 4px 20px; font-size: 0.84rem; color: var(--text-muted); line-height: 1.45;">
+          This will permanently delete the source video file and all cached resolution variants from disk.
+        </div>
+        <div class="modal-footer" style="justify-content: flex-end; gap: 8px;">
+          <button class="btn btn-secondary" id="btn-cancel-delete">Cancel</button>
+          <button class="btn btn-danger-action" id="btn-confirm-delete" style="background: #991b1b !important; background-color: #991b1b !important; border: 1px solid #dc2626 !important; color: #ffffff !important; font-weight: 500;">
+            Delete Wallpaper
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container"></div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

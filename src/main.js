@@ -16,6 +16,8 @@ let currentPanY = 0.0;
 let currentPausePolicy = 1; // 0: Never, 1: Fullscreen Game/App, 2: Maximized Window, 3: Any Window, 4: Battery
 let displays = [];
 let searchQuery = '';
+let currentSort = 'recent';
+let pendingDeleteId = null;
 
 // Quality Profile Definitions
 const QUALITY_PROFILES = {
@@ -58,6 +60,20 @@ const libraryGrid = document.getElementById('library-grid');
 const displaysList = document.getElementById('displays-list');
 const displayCount = document.getElementById('display-count');
 const searchLibraryInput = document.getElementById('search-library');
+const libraryCountBadge = document.getElementById('library-count-badge');
+const selectLibrarySort = document.getElementById('select-library-sort');
+const btnClearSearch = document.getElementById('btn-clear-search');
+const btnOpenFolder = document.getElementById('btn-open-folder');
+const btnOpenFolderSettings = document.getElementById('btn-open-folder-settings');
+const btnClearCache = document.getElementById('btn-clear-cache');
+const playerInfoJump = document.getElementById('player-info-jump');
+
+// Delete Modal Elements
+const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
+const modalDeleteDesc = document.getElementById('modal-delete-desc');
+const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+const btnCancelDelete = document.getElementById('btn-cancel-delete');
+const btnCancelDeleteX = document.getElementById('btn-cancel-delete-x');
 
 // Media Bar Elements
 const nowPlayingThumb = document.getElementById('now-playing-thumb');
@@ -99,6 +115,31 @@ const chkRememberCloseAction = document.getElementById('chk-remember-close-actio
 const settingCloseBehavior = document.getElementById('setting-close-behavior');
 const btnResetClosePref = document.getElementById('btn-reset-close-pref');
 
+// Toast Notification Function
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+
+  let iconSvg = Icons.zap;
+  if (type === 'success') iconSvg = Icons.check;
+  else if (type === 'error') iconSvg = Icons.x;
+  else if (type === 'info') iconSvg = Icons.library;
+
+  toast.innerHTML = `<span class="toast-icon">${iconSvg}</span><span>${message}</span>`;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add('show');
+  });
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
 // Helper to convert or extract thumbnail URL (prioritizes base64 data for WebKitGTK)
 function getThumbnail(wp) {
   if (!wp) return '/src-tauri/icons/icon.png';
@@ -127,6 +168,9 @@ function renderStaticIcons() {
 
   setIcon('icon-import-slot', Icons.plus);
   setIcon('icon-exit-slot', Icons.exit);
+  setIcon('icon-folder-slot', Icons.folder);
+  setIcon('icon-folder-settings-slot', Icons.folder);
+  setIcon('icon-clear-search-slot', Icons.x);
   setIcon('icon-tab-library', Icons.library);
   setIcon('icon-tab-displays', Icons.displays);
   setIcon('icon-tab-settings', Icons.settings);
@@ -152,10 +196,15 @@ async function init() {
   setupPerformanceControls();
   setupImportAndDrop();
   setupWindowControls();
+  setupKeyboardShortcuts();
+  setupStorageControls();
+  setupPlayerInfoJump();
+  setupDeleteModal();
 
   await refreshDisplays();
   await loadPerformanceSettings();
   await loadLibrary();
+  await refreshCacheStats();
 }
 
 // Tab Switching
@@ -177,11 +226,37 @@ function setupTabs() {
   });
 }
 
-// Search Filter
+// Search & Sort Controls
 function setupSearch() {
   if (searchLibraryInput) {
     searchLibraryInput.addEventListener('input', (e) => {
       searchQuery = e.target.value.toLowerCase().trim();
+      if (btnClearSearch) {
+        if (e.target.value.length > 0) {
+          btnClearSearch.classList.remove('hidden');
+        } else {
+          btnClearSearch.classList.add('hidden');
+        }
+      }
+      renderLibrary();
+    });
+  }
+
+  if (btnClearSearch) {
+    btnClearSearch.addEventListener('click', () => {
+      if (searchLibraryInput) {
+        searchLibraryInput.value = '';
+        searchQuery = '';
+        searchLibraryInput.focus();
+      }
+      btnClearSearch.classList.add('hidden');
+      renderLibrary();
+    });
+  }
+
+  if (selectLibrarySort) {
+    selectLibrarySort.addEventListener('change', (e) => {
+      currentSort = e.target.value;
       renderLibrary();
     });
   }
@@ -221,10 +296,11 @@ function renderDisplays() {
 
 window.applyToDisplay = async (screenId) => {
   if (!activeWallpaper) {
-    alert('Please select a wallpaper first.');
+    showToast('Please select a wallpaper first', 'info');
     return;
   }
   await applyWallpaper(activeWallpaper, screenId);
+  showToast(`Applied "${activeWallpaper.title}" to display ${screenId}`, 'success');
 };
 
 // Library Wallpapers
@@ -256,6 +332,14 @@ function renderLibrary() {
     return wp.title.toLowerCase().includes(searchQuery);
   });
 
+  if (libraryCountBadge) {
+    if (searchQuery) {
+      libraryCountBadge.textContent = `${filtered.length} / ${combined.length}`;
+    } else {
+      libraryCountBadge.textContent = `${combined.length}`;
+    }
+  }
+
   if (filtered.length === 0) {
     libraryGrid.innerHTML = `
       <div style="grid-column: 1 / -1; padding: 48px 20px; text-align: center; color: var(--text-muted);">
@@ -271,7 +355,22 @@ function renderLibrary() {
     return;
   }
 
-  libraryGrid.innerHTML = filtered
+  const sorted = [...filtered];
+  if (currentSort === 'title-asc') {
+    sorted.sort((a, b) => a.title.localeCompare(b.title));
+  } else if (currentSort === 'title-desc') {
+    sorted.sort((a, b) => b.title.localeCompare(a.title));
+  } else if (currentSort === 'duration') {
+    sorted.sort((a, b) => (b.duration_secs || 0) - (a.duration_secs || 0));
+  } else if (currentSort === 'res') {
+    const parseRes = (r) => {
+      const parts = (r || '').split('x').map((n) => parseInt(n) || 0);
+      return (parts[0] || 0) * (parts[1] || 1);
+    };
+    sorted.sort((a, b) => parseRes(b.resolution) - parseRes(a.resolution));
+  }
+
+  libraryGrid.innerHTML = sorted
     .map((wp) => {
       const isInstalling = wp.isInstalling === true;
       const isActive = activeWallpaper && activeWallpaper.id === wp.id;
@@ -306,29 +405,35 @@ function renderLibrary() {
         .join(' ');
 
       return `
-      <div class="card ${isActive ? 'active-wallpaper' : ''}" id="wp-card-${wp.id}">
+      <div class="card ${isActive ? 'active-wallpaper' : ''}" 
+           id="wp-card-${wp.id}" 
+           ondblclick="window.onApplyWallpaper('${wp.id}')" 
+           title="Double-click to apply wallpaper">
         <div class="card-thumbnail-wrapper" id="thumb-wrapper-${wp.id}">
           <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" />
           ${isActive ? '<span class="badge-active">Playing</span>' : ''}
           <span class="badge-res">${wp.resolution || 'HD'}</span>
         </div>
         <div class="card-body">
-          <div class="card-title editable" id="wp-title-${wp.id}" ondblclick="window.onStartRename('${wp.id}')" title="Double-click to rename">
+          <div class="card-title editable" 
+               id="wp-title-${wp.id}" 
+               ondblclick="event.stopPropagation(); window.onStartRename('${wp.id}')" 
+               title="Double-click title to rename">
             ${wp.title}
           </div>
           <div class="card-meta">Format: ${wp.format.toUpperCase()} • ${Math.round(wp.duration_secs)}s • Cached: [${cachedVariants}]</div>
           <div class="card-footer">
-            <button class="btn ${isActive ? 'btn-success' : 'btn-primary'}" onclick="window.onApplyWallpaper('${wp.id}')">
+            <button class="btn ${isActive ? 'btn-success' : 'btn-primary'}" onclick="event.stopPropagation(); window.onApplyWallpaper('${wp.id}')">
               ${isActive ? `${Icons.check} Active` : `${Icons.play} Apply`}
             </button>
             <div style="display: flex; gap: 4px;">
               <button class="btn btn-icon ${!isCachedForLevel ? 'btn-optimize-ready' : ''}" 
                       id="btn-opt-${wp.id}" 
-                      onclick="window.onOptimizeWallpaper('${wp.id}')" 
+                      onclick="event.stopPropagation(); window.onOptimizeWallpaper('${wp.id}')" 
                       title="${!isCachedForLevel ? `Optimize / Cache Q${currentQuality}` : `Variant Q${currentQuality} Cached`}">
                 ${Icons.zap}
               </button>
-              <button class="btn btn-icon" onclick="window.onDeleteWallpaper('${wp.id}')" title="Delete">
+              <button class="btn btn-icon" onclick="event.stopPropagation(); window.onDeleteWallpaper('${wp.id}')" title="Delete">
                 ${Icons.trash}
               </button>
             </div>
@@ -365,13 +470,14 @@ window.onStartRename = (id) => {
         const updated = await invoke('rename_wallpaper', { id, newTitle });
         wp.title = updated.title;
         titleEl.textContent = updated.title;
-        titleEl.title = 'Double-click to rename';
+        titleEl.title = 'Double-click title to rename';
         if (activeWallpaper && activeWallpaper.id === id) {
           activeWallpaper.title = updated.title;
           nowPlayingTitle.textContent = updated.title;
         }
+        showToast(`Renamed wallpaper to "${updated.title}"`, 'info');
       } catch (err) {
-        console.error('Failed to rename:', err);
+        showToast(`Failed to rename: ${err}`, 'error');
         titleEl.textContent = currentTitle;
       }
     } else {
@@ -398,18 +504,12 @@ window.onApplyWallpaper = async (id) => {
   const wp = wallpapers.find((w) => w.id === id);
   if (wp) {
     await applyWallpaper(wp, null);
+    showToast(`Applied "${wp.title}" to Desktop`, 'success');
   }
 };
 
-window.onDeleteWallpaper = async (id) => {
-  if (confirm('Are you sure you want to delete this wallpaper?')) {
-    try {
-      await invoke('delete_wallpaper', { id });
-      await loadLibrary();
-    } catch (e) {
-      alert('Error deleting wallpaper: ' + e);
-    }
-  }
+window.onDeleteWallpaper = (id) => {
+  showDeleteConfirm(id);
 };
 
 window.onOptimizeWallpaper = async (id) => {
@@ -441,6 +541,8 @@ window.onOptimizeWallpaper = async (id) => {
     }
 
     checkVariantCacheState();
+    showToast(`Cached variant Q${currentQuality} for "${updated.title}"`, 'success');
+    await refreshCacheStats();
 
     if (cardThumbWrapper) {
       const img = document.getElementById(`thumb-img-${id}`);
@@ -451,7 +553,7 @@ window.onOptimizeWallpaper = async (id) => {
     }
     setTimeout(() => renderLibrary(), 600);
   } catch (err) {
-    alert('Optimization error: ' + err);
+    showToast('Optimization error: ' + err, 'error');
     if (cardThumbWrapper) {
       cardThumbWrapper.classList.remove('is-installing');
       const bar = cardThumbWrapper.querySelector('.loading-bar-wrapper');
@@ -478,7 +580,7 @@ async function applyWallpaper(wp, screenId) {
     checkVariantCacheState();
     renderLibrary();
   } catch (e) {
-    alert('Failed to set wallpaper: ' + e);
+    showToast('Failed to set wallpaper: ' + e, 'error');
   }
 }
 
@@ -615,7 +717,7 @@ function setupPerformanceControls() {
   // Optimize Active Wallpaper button (turns green when variant is uncached)
   btnCompressActive.addEventListener('click', async () => {
     if (!activeWallpaper) {
-      alert('Please select or play a wallpaper first to optimize it.');
+      showToast('Please select or play a wallpaper first to optimize it', 'info');
       return;
     }
     btnCompressActive.disabled = true;
@@ -635,8 +737,10 @@ function setupPerformanceControls() {
       // Update button state (no longer uncached)
       checkVariantCacheState();
       renderLibrary();
+      showToast(`Successfully cached Q${currentQuality} for "${activeWallpaper.title}"`, 'success');
+      await refreshCacheStats();
     } catch (err) {
-      alert('Compression error: ' + err);
+      showToast('Compression error: ' + err, 'error');
     } finally {
       btnCompressActive.disabled = false;
       btnCompressActive.innerHTML = origHtml;
@@ -647,10 +751,7 @@ function setupPerformanceControls() {
   // Compress Entire Library button
   btnCompressAll.addEventListener('click', async () => {
     if (wallpapers.length === 0) {
-      alert('No wallpapers in library to compress.');
-      return;
-    }
-    if (!confirm(`Cache variant Q${currentQuality} for all ${wallpapers.length} wallpapers in your library?`)) {
+      showToast('No wallpapers in library to compress', 'info');
       return;
     }
 
@@ -678,7 +779,8 @@ function setupPerformanceControls() {
     btnCompressAll.innerHTML = origHtml;
     checkVariantCacheState();
     renderLibrary();
-    alert(`Successfully cached variant Q${currentQuality} for ${count} wallpaper(s).`);
+    showToast(`Successfully cached variant Q${currentQuality} for ${count} wallpaper(s)`, 'success');
+    await refreshCacheStats();
   });
 }
 
@@ -839,9 +941,11 @@ function setupImportAndDrop() {
       const imported = await invoke('select_and_import_videos');
       if (imported && imported.length > 0) {
         await loadLibrary();
+        showToast(`Imported ${imported.length} new wallpaper(s)`, 'success');
+        await refreshCacheStats();
       }
     } catch (e) {
-      alert('Error importing video: ' + e);
+      showToast('Error importing video: ' + e, 'error');
     } finally {
       btnImport.disabled = false;
       btnImport.innerHTML = `${Icons.plus} <span>Import Video</span>`;
@@ -904,7 +1008,11 @@ function setupImportAndDrop() {
         }
       }
 
-      setTimeout(() => renderLibrary(), 600);
+      setTimeout(async () => {
+        renderLibrary();
+        showToast(`Imported ${addedTemp.length} wallpaper(s)`, 'success');
+        await refreshCacheStats();
+      }, 600);
     }
   });
 
@@ -1034,6 +1142,188 @@ function setupWindowControls() {
       hideCloseDialog();
     }
   });
+}
+
+// In-App Deletion Modal Logic
+function setupDeleteModal() {
+  if (btnConfirmDelete) {
+    btnConfirmDelete.addEventListener('click', async () => {
+      if (!pendingDeleteId) return;
+      const idToDelete = pendingDeleteId;
+      hideDeleteConfirm();
+      try {
+        await invoke('delete_wallpaper', { id: idToDelete });
+        showToast('Wallpaper deleted', 'info');
+        await loadLibrary();
+        await refreshCacheStats();
+      } catch (e) {
+        showToast(`Error deleting wallpaper: ${e}`, 'error');
+      }
+    });
+  }
+
+  if (btnCancelDelete) {
+    btnCancelDelete.addEventListener('click', hideDeleteConfirm);
+  }
+
+  if (btnCancelDeleteX) {
+    btnCancelDeleteX.addEventListener('click', hideDeleteConfirm);
+  }
+
+  if (modalDeleteConfirm) {
+    modalDeleteConfirm.addEventListener('click', (e) => {
+      if (e.target === modalDeleteConfirm) {
+        hideDeleteConfirm();
+      }
+    });
+  }
+}
+
+function showDeleteConfirm(id) {
+  const wp = wallpapers.find((w) => w.id === id);
+  if (!wp) return;
+  pendingDeleteId = id;
+  if (modalDeleteDesc) {
+    modalDeleteDesc.textContent = `Are you sure you want to remove "${wp.title}"?`;
+  }
+  if (modalDeleteConfirm) {
+    modalDeleteConfirm.classList.remove('hidden');
+  }
+}
+
+function hideDeleteConfirm() {
+  pendingDeleteId = null;
+  if (modalDeleteConfirm) {
+    modalDeleteConfirm.classList.add('hidden');
+  }
+}
+
+// Global Keyboard Navigation
+function setupKeyboardShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    const isInputFocused = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+
+    // Space: Toggle Play/Pause on active wallpaper
+    if (e.code === 'Space' && !isInputFocused) {
+      e.preventDefault();
+      if (activeWallpaper && btnTogglePlay) {
+        btnTogglePlay.click();
+      }
+      return;
+    }
+
+    // Ctrl+F: Focus Search
+    if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      const libTabBtn = document.getElementById('tab-btn-library');
+      if (libTabBtn && !libTabBtn.classList.contains('active')) {
+        libTabBtn.click();
+      }
+      if (searchLibraryInput) {
+        searchLibraryInput.focus();
+        searchLibraryInput.select();
+      }
+      return;
+    }
+
+    // Ctrl+O or Ctrl+I: Import Video
+    if (e.ctrlKey && (e.key.toLowerCase() === 'o' || e.key.toLowerCase() === 'i')) {
+      e.preventDefault();
+      if (btnImport) {
+        btnImport.click();
+      }
+      return;
+    }
+
+    // Escape: Clear search if focused, or close active modals
+    if (e.key === 'Escape') {
+      if (document.activeElement === searchLibraryInput) {
+        searchLibraryInput.value = '';
+        searchQuery = '';
+        if (btnClearSearch) btnClearSearch.classList.add('hidden');
+        searchLibraryInput.blur();
+        renderLibrary();
+        return;
+      }
+      if (modalDeleteConfirm && !modalDeleteConfirm.classList.contains('hidden')) {
+        hideDeleteConfirm();
+        return;
+      }
+      if (modalCloseControls && !modalCloseControls.classList.contains('hidden')) {
+        modalCloseControls.classList.add('hidden');
+        return;
+      }
+    }
+  });
+}
+
+// Quick-Jump from Player Bar to Library Card
+function setupPlayerInfoJump() {
+  if (playerInfoJump) {
+    playerInfoJump.addEventListener('click', () => {
+      if (!activeWallpaper) return;
+      const libTabBtn = document.getElementById('tab-btn-library');
+      if (libTabBtn && !libTabBtn.classList.contains('active')) {
+        libTabBtn.click();
+      }
+
+      setTimeout(() => {
+        const card = document.getElementById(`wp-card-${activeWallpaper.id}`);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.remove('highlight-pulse');
+          void card.offsetWidth;
+          card.classList.add('highlight-pulse');
+          showToast(`Located active wallpaper: ${activeWallpaper.title}`, 'info');
+        }
+      }, 60);
+    });
+  }
+}
+
+// Storage & Cache Management
+async function refreshCacheStats() {
+  const cacheStatsText = document.getElementById('cache-stats-text');
+  if (!cacheStatsText) return;
+  try {
+    const stats = await invoke('get_cache_stats');
+    const mb = (stats.total_cache_bytes / (1024 * 1024)).toFixed(1);
+    cacheStatsText.textContent = `Cached Variants: ${stats.cached_variants_count} file(s) (${mb} MB)`;
+  } catch (e) {
+    console.error('Failed to get cache stats:', e);
+  }
+}
+
+function setupStorageControls() {
+  const handleOpenStorage = async () => {
+    try {
+      await invoke('open_storage_dir');
+    } catch (e) {
+      showToast(`Failed to open folder: ${e}`, 'error');
+    }
+  };
+
+  if (btnOpenFolder) {
+    btnOpenFolder.addEventListener('click', handleOpenStorage);
+  }
+
+  if (btnOpenFolderSettings) {
+    btnOpenFolderSettings.addEventListener('click', handleOpenStorage);
+  }
+
+  if (btnClearCache) {
+    btnClearCache.addEventListener('click', async () => {
+      try {
+        const deleted = await invoke('clear_variant_cache');
+        showToast(`Cleared ${deleted} variant files`, 'info');
+        await refreshCacheStats();
+        checkVariantCacheState();
+        renderLibrary();
+      } catch (e) {
+        showToast(`Failed to clear cache: ${e}`, 'error');
+      }
+    });
+  }
 }
 
 // Start Application

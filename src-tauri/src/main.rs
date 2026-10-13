@@ -151,8 +151,34 @@ fn delete_wallpaper(state: State<'_, AppState>, id: String) -> Result<(), String
         let item = library.remove(pos);
         let _ = std::fs::remove_file(&item.file_path);
         let _ = std::fs::remove_file(&item.thumbnail_path);
+
+        // Clean up any generated resolution variant files
+        let storage_dir = state.wallpaper_mgr.get_storage_dir();
+        for q in 1..=5 {
+            let variant_path = storage_dir.join(format!("{}_q{}.mp4", item.id, q));
+            let _ = std::fs::remove_file(variant_path);
+        }
+
         state.wallpaper_mgr.save_library(&library)?;
     }
+
+    let was_active = {
+        let mut active_lock = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
+        if let Some(active) = &*active_lock {
+            if active.id == id {
+                *active_lock = None;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
+    if was_active {
+        let _ = state.wallpaper_mgr.stop();
+    }
+
     Ok(())
 }
 
@@ -480,6 +506,77 @@ fn get_video_duration(path: &Path) -> Option<f64> {
     None
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct CacheStats {
+    pub cached_variants_count: usize,
+    pub total_cache_bytes: u64,
+}
+
+#[tauri::command]
+fn open_storage_dir(state: State<'_, AppState>) -> Result<(), String> {
+    let dir = state.wallpaper_mgr.get_storage_dir();
+    Command::new("xdg-open")
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("Failed to open directory with xdg-open: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_cache_stats(state: State<'_, AppState>) -> Result<CacheStats, String> {
+    let dir = state.wallpaper_mgr.get_storage_dir();
+    let mut count = 0;
+    let mut bytes = 0;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                if fname.contains("_q") && fname.ends_with(".mp4") {
+                    count += 1;
+                    if let Ok(meta) = entry.metadata() {
+                        bytes += meta.len();
+                    }
+                }
+            }
+        }
+    }
+    Ok(CacheStats {
+        cached_variants_count: count,
+        total_cache_bytes: bytes,
+    })
+}
+
+#[tauri::command]
+fn clear_variant_cache(state: State<'_, AppState>) -> Result<usize, String> {
+    let dir = state.wallpaper_mgr.get_storage_dir();
+    let mut deleted = 0;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                if fname.contains("_q") && fname.ends_with(".mp4") {
+                    if std::fs::remove_file(&path).is_ok() {
+                        deleted += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut library = state.wallpaper_mgr.load_library();
+    for item in &mut library {
+        item.cached_qualities = vec![5];
+    }
+    state.wallpaper_mgr.save_library(&library)?;
+
+    let mut active_lock = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
+    if let Some(active) = &mut *active_lock {
+        active.cached_qualities = vec![5];
+    }
+
+    Ok(deleted)
+}
+
 #[tauri::command]
 fn minimize_window(window: tauri::WebviewWindow) {
     let _ = window.minimize();
@@ -593,7 +690,10 @@ fn main() {
             minimize_window,
             toggle_maximize_window,
             hide_window,
-            exit_app
+            exit_app,
+            open_storage_dir,
+            get_cache_stats,
+            clear_variant_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherPaper tauri application");

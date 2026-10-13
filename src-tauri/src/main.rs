@@ -606,6 +606,56 @@ fn hide_window(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
+fn get_autostart_status() -> bool {
+    if let Some(config_dir) = dirs::config_dir() {
+        let desktop_file = config_dir.join("autostart").join("animated-linux.desktop");
+        desktop_file.exists()
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+fn set_autostart(enable: bool) -> Result<bool, String> {
+    let config_dir = dirs::config_dir().ok_or_else(|| "Could not locate user config directory".to_string())?;
+    let autostart_dir = config_dir.join("autostart");
+    let desktop_file = autostart_dir.join("animated-linux.desktop");
+
+    if enable {
+        std::fs::create_dir_all(&autostart_dir).map_err(|e| format!("Failed to create autostart directory: {}", e))?;
+        let current_exe = std::env::current_exe().map_err(|e| format!("Failed to determine current executable path: {}", e))?;
+        let exe_str = current_exe.to_string_lossy();
+
+        let icon_path = current_exe.parent()
+            .map(|p| p.join("icons").join("icon.png"))
+            .filter(|p| p.exists())
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "animated-linux".to_string());
+
+        let desktop_content = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Animated Linux\n\
+             Comment=Hardware-accelerated animated wallpaper engine for Linux\n\
+             Exec=\"{}\" --autostart\n\
+             Icon={}\n\
+             Terminal=false\n\
+             Categories=Utility;Settings;\n\
+             X-GNOME-Autostart-enabled=true\n",
+            exe_str, icon_path
+        );
+
+        std::fs::write(&desktop_file, desktop_content).map_err(|e| format!("Failed to write autostart desktop entry: {}", e))?;
+        Ok(true)
+    } else {
+        if desktop_file.exists() {
+            std::fs::remove_file(&desktop_file).map_err(|e| format!("Failed to remove autostart desktop entry: {}", e))?;
+        }
+        Ok(false)
+    }
+}
+
+#[tauri::command]
 fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) {
     SHOULD_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = state.wallpaper_mgr.stop();
@@ -641,9 +691,27 @@ fn main() {
             }
         })
         .setup(move |app| {
+            let args: Vec<String> = std::env::args().collect();
+            let is_autostart = args.iter().any(|a| a == "--autostart" || a == "--minimized" || a == "--hidden");
+            if is_autostart {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+
             if let Err(e) = tray::setup_tray(app.handle()) {
                 eprintln!("[Tray] Warning: could not initialize system tray: {}", e);
             }
+
+            // Restore active wallpaper playback if present
+            let wp_mgr_init = wallpaper_mgr.clone();
+            tauri::async_runtime::spawn(async move {
+                let maybe_active = wp_mgr_init.active_wallpaper.lock().unwrap().clone();
+                if let Some(active) = maybe_active {
+                    let _ = wp_mgr_init.apply_wallpaper(active, None);
+                }
+            });
 
             // Start fullscreen game detection monitor task
             let wp_mgr = wallpaper_mgr.clone();
@@ -699,7 +767,9 @@ fn main() {
             exit_app,
             open_storage_dir,
             get_cache_stats,
-            clear_variant_cache
+            clear_variant_cache,
+            get_autostart_status,
+            set_autostart
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherPaper tauri application");

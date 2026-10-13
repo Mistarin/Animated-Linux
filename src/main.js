@@ -99,6 +99,8 @@ const btnCompressActive = document.getElementById('btn-compress-active');
 const btnCompressAll = document.getElementById('btn-compress-all');
 const chkHardwareAccel = document.getElementById('chk-hardware-accel');
 const settingBackend = document.getElementById('setting-backend');
+const chkAutostart = document.getElementById('chk-autostart');
+const labelAutostartStatus = document.getElementById('label-autostart-status');
 
 const btnImport = document.getElementById('btn-import');
 const dropzone = document.getElementById('dropzone');
@@ -201,6 +203,7 @@ async function init() {
   setupWindowControls();
   setupKeyboardShortcuts();
   setupStorageControls();
+  setupAutostartControls();
   setupPlayerInfoJump();
   setupDeleteModal();
 
@@ -1387,6 +1390,45 @@ function setupStorageControls() {
       }
     });
   }
+}
+
+// System Autostart Controls
+async function setupAutostartControls() {
+  if (!chkAutostart) return;
+
+  const updateAutostartUi = (enabled) => {
+    chkAutostart.checked = enabled;
+    if (labelAutostartStatus) {
+      labelAutostartStatus.textContent = enabled ? 'Enabled' : 'Disabled';
+      labelAutostartStatus.style.color = enabled ? '#10b981' : 'var(--text-secondary)';
+    }
+  };
+
+  try {
+    const isAutostart = await invoke('get_autostart_status');
+    updateAutostartUi(isAutostart);
+  } catch (err) {
+    console.error('Failed to query autostart status:', err);
+  }
+
+  chkAutostart.addEventListener('change', async (e) => {
+    const targetState = e.target.checked;
+    try {
+      const result = await invoke('set_autostart', { enable: targetState });
+      updateAutostartUi(result);
+      if (result) {
+        showToast('Animated Linux added to system startup', 'success');
+      } else {
+        showToast('Animated Linux removed from system startup', 'info');
+      }
+    } catch (err) {
+      showToast(`Failed to update startup configuration: ${err}`, 'error');
+      try {
+        const isAutostart = await invoke('get_autostart_status');
+        updateAutostartUi(isAutostart);
+      } catch (_) {}
+    }
+  });
 }
 
 // Start Application

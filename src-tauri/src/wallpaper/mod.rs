@@ -87,11 +87,22 @@ impl WallpaperManager {
             }
         }
 
+        let active_path = storage_dir.join("active.json");
+        let restored_active: Option<WallpaperItem> = if active_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&active_path) {
+                serde_json::from_str::<WallpaperItem>(&content).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             plasma_backend: KdePlasmaBackend::new(),
             mpv_backend: MpvBackend::new(),
             current_settings: Mutex::new(PlaybackSettings::default()),
-            active_wallpaper: Mutex::new(None),
+            active_wallpaper: Mutex::new(restored_active),
             storage_dir,
             library_path,
         }
@@ -112,8 +123,9 @@ impl WallpaperManager {
     pub fn apply_wallpaper(&self, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let backend = self.get_active_backend();
-        println!("[AetherPaper] Applying wallpaper via {}", backend.name());
+        println!("[AnimatedLinux] Applying wallpaper via {}", backend.name());
         backend.apply(&wallpaper, screen, &settings)?;
+        let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&wallpaper).unwrap_or_default());
         *self.active_wallpaper.lock().unwrap() = Some(wallpaper);
         Ok(())
     }
@@ -191,6 +203,7 @@ impl WallpaperManager {
     pub fn stop(&self) -> Result<(), String> {
         let backend = self.get_active_backend();
         backend.stop(None)?;
+        let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
         Ok(())
     }

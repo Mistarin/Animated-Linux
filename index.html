@@ -224,6 +224,26 @@
 
           <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
 
+          <!-- System Startup -->
+          <div>
+            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">System Startup</h3>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
+              Automatically launch Animated Linux in the background when logging into your desktop session.
+            </p>
+            <div style="background: var(--bg-surface); padding: 14px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Launch on System Startup</div>
+                <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 3px;">Creates or removes XDG autostart entry (~/.config/autostart/animated-linux.desktop).</div>
+              </div>
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="chk-autostart" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                <span id="label-autostart-status" style="font-size: 0.82rem; color: var(--text-secondary); font-weight: 400;">Disabled</span>
+              </label>
+            </div>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
+
           <!-- Storage & Cache Management -->
           <div>
             <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Storage & Resolution Variants Cache</h3>

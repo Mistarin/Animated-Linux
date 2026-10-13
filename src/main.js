@@ -69,8 +69,8 @@ const selectSpeed = document.getElementById('select-speed');
 const sliderQuality = document.getElementById('slider-quality');
 const labelQualityVal = document.getElementById('label-quality-val');
 const selectSizing = document.getElementById('select-sizing');
-const sliderPanX = document.getElementById('slider-pan-x');
-const sliderPanY = document.getElementById('slider-pan-y');
+const selectPanX = document.getElementById('select-pan-x');
+const selectPanY = document.getElementById('select-pan-y');
 const btnResetPan = document.getElementById('btn-reset-pan');
 
 // Settings Elements
@@ -536,6 +536,22 @@ function setupMediaControls() {
   });
 }
 
+// Helper to set or add formatted pan value (+20, -20, 0) in select dropdown
+function setPanSelectValue(selectEl, numVal) {
+  if (!selectEl) return;
+  const rounded = Math.round(numVal * 100);
+  const str = rounded.toString();
+  const existing = Array.from(selectEl.options).find((opt) => opt.value === str);
+  if (existing) {
+    selectEl.value = str;
+  } else {
+    const label = rounded > 0 ? `+${rounded}` : `${rounded}`;
+    const newOpt = new Option(label, str, true, true);
+    selectEl.add(newOpt);
+    selectEl.value = str;
+  }
+}
+
 // Geometry / Sizing and Pan Controls
 function setupGeometryControls() {
   selectSizing.addEventListener('change', async (e) => {
@@ -543,12 +559,12 @@ function setupGeometryControls() {
     await syncGeometry();
   });
 
-  sliderPanX.addEventListener('input', async (e) => {
+  selectPanX.addEventListener('change', async (e) => {
     currentPanX = parseInt(e.target.value) / 100.0;
     await syncGeometry();
   });
 
-  sliderPanY.addEventListener('input', async (e) => {
+  selectPanY.addEventListener('change', async (e) => {
     currentPanY = parseInt(e.target.value) / 100.0;
     await syncGeometry();
   });
@@ -556,8 +572,8 @@ function setupGeometryControls() {
   btnResetPan.addEventListener('click', async () => {
     currentPanX = 0.0;
     currentPanY = 0.0;
-    sliderPanX.value = 0;
-    sliderPanY.value = 0;
+    selectPanX.value = '0';
+    selectPanY.value = '0';
     await syncGeometry();
   });
 }
@@ -788,8 +804,8 @@ async function loadPerformanceSettings() {
     settingFpsSelect.value = currentFps.toString();
     settingPausePolicy.value = currentPausePolicy.toString();
     selectSizing.value = currentFillMode.toString();
-    sliderPanX.value = Math.round(currentPanX * 100);
-    sliderPanY.value = Math.round(currentPanY * 100);
+    setPanSelectValue(selectPanX, currentPanX);
+    setPanSelectValue(selectPanY, currentPanY);
     chkHardwareAccel.checked = s.hardware_accel;
   } catch (e) {
     console.error('Failed to load performance settings:', e);

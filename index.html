@@ -226,12 +226,48 @@
         <!-- Pan Position Offsets -->
         <div class="slider-group" title="Horizontal Pan Position Offset">
           <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">X:</span>
-          <input type="range" id="slider-pan-x" min="-50" max="50" value="0" style="width: 50px;" />
+          <select id="select-pan-x" style="padding: 3px 6px; min-width: 58px;">
+            <option value="-50">-50</option>
+            <option value="-40">-40</option>
+            <option value="-30">-30</option>
+            <option value="-25">-25</option>
+            <option value="-20">-20</option>
+            <option value="-15">-15</option>
+            <option value="-10">-10</option>
+            <option value="-5">-5</option>
+            <option value="0" selected>0</option>
+            <option value="5">+5</option>
+            <option value="10">+10</option>
+            <option value="15">+15</option>
+            <option value="20">+20</option>
+            <option value="25">+25</option>
+            <option value="30">+30</option>
+            <option value="40">+40</option>
+            <option value="50">+50</option>
+          </select>
         </div>
         <div class="slider-group" title="Vertical Pan Position Offset">
           <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">Y:</span>
-          <input type="range" id="slider-pan-y" min="-50" max="50" value="0" style="width: 50px;" />
-          <button class="btn btn-icon" id="btn-reset-pan" title="Reset Position" style="padding: 2px 4px; font-size: 0.68rem; color: var(--text-dim);">
+          <select id="select-pan-y" style="padding: 3px 6px; min-width: 58px;">
+            <option value="-50">-50</option>
+            <option value="-40">-40</option>
+            <option value="-30">-30</option>
+            <option value="-25">-25</option>
+            <option value="-20">-20</option>
+            <option value="-15">-15</option>
+            <option value="-10">-10</option>
+            <option value="-5">-5</option>
+            <option value="0" selected>0</option>
+            <option value="5">+5</option>
+            <option value="10">+10</option>
+            <option value="15">+15</option>
+            <option value="20">+20</option>
+            <option value="25">+25</option>
+            <option value="30">+30</option>
+            <option value="40">+40</option>
+            <option value="50">+50</option>
+          </select>
+          <button class="btn btn-icon" id="btn-reset-pan" title="Reset Position to Center (0, 0)" style="padding: 2px 6px; font-size: 0.68rem; color: var(--text-dim);">
             0
           </button>
         </div>

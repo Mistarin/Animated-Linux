@@ -491,6 +491,8 @@ fn toggle_maximize_window(window: tauri::WebviewWindow) {
     }
 }
 
+static SHOULD_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) {
     let _ = window.hide();
@@ -498,8 +500,10 @@ fn hide_window(window: tauri::WebviewWindow) {
 
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) {
+    SHOULD_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = state.wallpaper_mgr.stop();
-    app.exit(0);
+    let _ = app;
+    std::process::exit(0);
 }
 
 fn main() {
@@ -516,9 +520,11 @@ fn main() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                use tauri::Emitter;
-                let _ = window.emit("window-close-requested", ());
+                if !SHOULD_EXIT.load(std::sync::atomic::Ordering::SeqCst) {
+                    api.prevent_close();
+                    use tauri::Emitter;
+                    let _ = window.emit("window-close-requested", ());
+                }
             }
         })
         .setup(move |app| {

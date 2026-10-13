@@ -12,16 +12,6 @@ echo "================================================================"
 echo "          Animated Linux Launcher                               "
 echo "================================================================"
 
-# Locate libsteam_api.so from cargo build artifacts if present
-STEAM_LIB="$(find "$ROOT_DIR/src-tauri/target" -name "libsteam_api.so" 2>/dev/null | head -n 1 || true)"
-if [ -n "$STEAM_LIB" ]; then
-    STEAM_DIR="$(dirname "$STEAM_LIB")"
-    [ -d "$(dirname "$RELEASE_BIN")" ] && cp -u "$STEAM_LIB" "$(dirname "$RELEASE_BIN")/" 2>/dev/null || true
-    [ -d "$(dirname "$DEBUG_BIN")" ] && cp -u "$STEAM_LIB" "$(dirname "$DEBUG_BIN")/" 2>/dev/null || true
-    [ -d "$ROOT_DIR/dist" ] && cp -u "$STEAM_LIB" "$ROOT_DIR/dist/" 2>/dev/null || true
-    export LD_LIBRARY_PATH="$(dirname "$RELEASE_BIN"):$(dirname "$DEBUG_BIN"):$STEAM_DIR:${LD_LIBRARY_PATH:-}"
-fi
-
 # Check for flags
 USE_DEV=0
 FORCE_BUILD=0

@@ -26,13 +26,6 @@ build_native_binary() {
     pnpm tauri build --no-bundle
     
     cp "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64"
-    
-    # Ensure libsteam_api.so is located alongside binaries if present
-    STEAM_SO="$(find "$ROOT_DIR/src-tauri/target" -name "libsteam_api.so" 2>/dev/null | head -n 1 || true)"
-    if [ -n "$STEAM_SO" ]; then
-        cp -u "$STEAM_SO" "$ROOT_DIR/src-tauri/target/release/" 2>/dev/null || true
-        cp -u "$STEAM_SO" "$ROOT_DIR/dist/" 2>/dev/null || true
-    fi
     echo "[OK] Binary built: dist/animated-linux-x86_64"
 }
 

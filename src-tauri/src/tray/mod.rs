@@ -41,7 +41,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(state) = app.try_state::<AppState>() {
                         let _ = state.wallpaper_mgr.stop();
                     }
-                    app.exit(0);
+                    std::process::exit(0);
                 }
                 _ => {}
             }

@@ -10,10 +10,12 @@ pub struct SteamStatus {
 }
 
 pub struct SteamManager {
+    #[cfg(feature = "steam")]
     client: Option<steamworks::Client>,
     pub status: Mutex<SteamStatus>,
 }
 
+#[cfg(feature = "steam")]
 fn ensure_appid_file(path: &str, app_id: u32) {
     let id_str = app_id.to_string();
     if let Ok(existing) = std::fs::read_to_string(path) {
@@ -25,8 +27,8 @@ fn ensure_appid_file(path: &str, app_id: u32) {
 }
 
 impl SteamManager {
+    #[cfg(feature = "steam")]
     pub fn new(app_id: u32) -> Arc<Self> {
-        // Ensure steam_appid.txt exists for local dev without touching timestamp if unchanged
         ensure_appid_file("steam_appid.txt", app_id);
         ensure_appid_file("src-tauri/steam_appid.txt", app_id);
 
@@ -59,18 +61,30 @@ impl SteamManager {
             status: Mutex::new(status),
         });
 
-        // Set rich presence if connected
         if let Some(ref client) = manager.client {
-            client.friends().set_rich_presence("status", Some("Active: AetherPaper Engine"));
+            client.friends().set_rich_presence("status", Some("Active: Animated Linux Engine"));
             client.friends().set_rich_presence("steam_display", Some("#StatusActive"));
         }
 
         manager
     }
 
-    pub fn set_wallpaper_presence(&self, title: &str) {
+    #[cfg(not(feature = "steam"))]
+    pub fn new(app_id: u32) -> Arc<Self> {
+        Arc::new(Self {
+            status: Mutex::new(SteamStatus {
+                is_connected: false,
+                user_name: "Standalone Git Edition".to_string(),
+                steam_id: "0".to_string(),
+                app_id,
+            }),
+        })
+    }
+
+    pub fn set_wallpaper_presence(&self, _title: &str) {
+        #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
-            let status_msg = format!("Wallpaper: {}", title);
+            let status_msg = format!("Wallpaper: {}", _title);
             client.friends().set_rich_presence("status", Some(&status_msg));
         }
     }

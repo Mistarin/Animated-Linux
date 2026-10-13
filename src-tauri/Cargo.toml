@@ -16,7 +16,7 @@ base64 = "0.22"
 steamworks = { version = "0.13.1", optional = true }
 
 [features]
-default = ["steam"]
+default = []
 steam = ["dep:steamworks"]
 
 [build-dependencies]

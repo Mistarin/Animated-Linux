@@ -1082,7 +1082,7 @@ function setupWindowControls() {
       } else if (action === 'minimize') {
         await invoke('minimize_window');
       } else if (action === 'quit') {
-        await invoke('exit_app');
+        await invoke('safe_exit_app');
       }
     } catch (err) {
       console.error(`Failed to execute close action ${action}:`, err);
@@ -1096,7 +1096,7 @@ function setupWindowControls() {
     } else if (pref === 'minimize') {
       invoke('minimize_window').catch(console.error);
     } else if (pref === 'quit') {
-      invoke('exit_app').catch(console.error);
+      invoke('safe_exit_app').catch(console.error);
     } else {
       showCloseDialog();
     }

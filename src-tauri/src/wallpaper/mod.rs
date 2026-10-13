@@ -125,7 +125,9 @@ impl WallpaperManager {
         let backend = self.get_active_backend();
         println!("[AnimatedLinux] Applying wallpaper via {}", backend.name());
         backend.apply(&wallpaper, screen, &settings)?;
-        let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&wallpaper).unwrap_or_default());
+        let mut save_item = wallpaper.clone();
+        save_item.thumbnail_data = None;
+        let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&save_item).unwrap_or_default());
         *self.active_wallpaper.lock().unwrap() = Some(wallpaper);
         Ok(())
     }

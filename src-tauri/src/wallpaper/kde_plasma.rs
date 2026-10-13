@@ -53,16 +53,13 @@ impl WallpaperBackend for KdePlasmaBackend {
 
         let target_screen = screen.unwrap_or(-1);
         let fill_mode = settings.fill_mode;
-        // In Plasma 6, PauseMode 0 triggers windowModel errors and pauses on any maximized normal window.
-        // PauseMode 3 (Never pause in QML) ensures continuous smooth video playback.
-        // Performance pausing is managed directly by AetherPaper's detector.
-        let pause_mode = 3;
+        let pause_mode = if settings.pause_on_fullscreen { 0 } else { 3 };
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
 
         // Plasma 6 Script to update wallpaper plugin on specified screen(s)
-        // Notice: Smart Video Wallpaper Reborn requires VideoUrls to be a JSON array of video objects with "enabled": true
+        // Smart Video Wallpaper Reborn requires VideoUrls to be a JSON array of video objects with "enabled": true
         let video_config_json = serde_json::json!([{
             "filename": video_url,
             "enabled": true,
@@ -90,7 +87,6 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("VideoUrls", JSON.stringify(videoConfig));
         d.writeConfig("LastVideo", videoUrl);
         d.writeConfig("ResumeLastVideo", true);
-        d.writeConfig("PlaybackOverride", 0);
         d.writeConfig("PlaybackRate", {speed_val});
         d.writeConfig("FillMode", {fill_mode});
         d.writeConfig("PauseMode", {pause_mode});

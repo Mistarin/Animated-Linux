@@ -6,10 +6,12 @@ mod steam;
 mod monitors;
 mod performance;
 mod tray;
+mod request_manager;
 
 use wallpaper::{backend::*, WallpaperManager};
 use steam::{SteamManager, SteamStatus, WorkshopItem, WorkshopManager, SteamShortcutInstaller};
 use monitors::MonitorDetector;
+use request_manager::RequestManager;
 use tauri::State;
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
@@ -19,6 +21,7 @@ pub struct AppState {
     pub wallpaper_mgr: Arc<WallpaperManager>,
     pub steam_mgr: Arc<SteamManager>,
     pub workshop_mgr: WorkshopManager,
+    pub request_manager: Arc<RequestManager>,
 }
 
 #[tauri::command]
@@ -207,15 +210,15 @@ fn rename_wallpaper(state: State<'_, AppState>, id: String, new_title: String) -
 }
 
 #[tauri::command]
-fn apply_wallpaper(state: State<'_, AppState>, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
-    state.wallpaper_mgr.apply_wallpaper(wallpaper.clone(), screen)?;
+async fn apply_wallpaper(state: State<'_, AppState>, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
+    state.request_manager.apply_wallpaper(wallpaper.clone(), screen).await?;
     state.steam_mgr.set_wallpaper_presence(&wallpaper.title);
     Ok(())
 }
 
 #[tauri::command]
-fn stop_wallpaper(state: State<'_, AppState>) -> Result<(), String> {
-    state.wallpaper_mgr.stop()
+async fn stop_wallpaper(state: State<'_, AppState>) -> Result<(), String> {
+    state.request_manager.stop_wallpaper().await
 }
 
 #[tauri::command]
@@ -224,17 +227,14 @@ fn get_active_wallpaper(state: State<'_, AppState>) -> Option<WallpaperItem> {
 }
 
 #[tauri::command]
-fn set_playback_state(
+async fn set_playback_state(
     state: State<'_, AppState>,
     is_paused: bool,
     volume: u32,
     is_muted: bool,
     speed: f32,
 ) -> Result<(), String> {
-    state.wallpaper_mgr.set_paused(is_paused)?;
-    state.wallpaper_mgr.set_volume(volume, is_muted)?;
-    state.wallpaper_mgr.set_speed(speed)?;
-    Ok(())
+    state.request_manager.set_playback_state(is_paused, volume, is_muted, speed).await
 }
 
 #[tauri::command]
@@ -261,13 +261,13 @@ fn update_performance_settings(
 }
 
 #[tauri::command]
-fn set_video_geometry(
+async fn set_video_geometry(
     state: State<'_, AppState>,
     fill_mode: u32,
     pan_x: f32,
     pan_y: f32,
 ) -> Result<(), String> {
-    state.wallpaper_mgr.set_geometry(fill_mode, pan_x, pan_y)
+    state.request_manager.set_geometry(fill_mode, pan_x, pan_y).await
 }
 
 #[tauri::command]
@@ -317,7 +317,11 @@ fn switch_wallpaper_quality(
     };
     if let Some(active_id) = active_id {
         if active_id == id {
-            let _ = state.wallpaper_mgr.apply_wallpaper(updated.clone(), None);
+            let req_mgr = state.request_manager.clone();
+            let up = updated.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = req_mgr.apply_wallpaper(up, None).await;
+            });
         }
     }
 
@@ -656,11 +660,15 @@ fn set_autostart(enable: bool) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) {
+async fn safe_exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     SHOULD_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _ = state.wallpaper_mgr.stop();
-    let _ = app;
-    std::process::exit(0);
+    state.request_manager.safe_quit(app).await
+}
+
+#[tauri::command]
+async fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    SHOULD_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
+    state.request_manager.safe_quit(app).await
 }
 
 fn main() {
@@ -673,11 +681,13 @@ fn main() {
     let steam_mgr = SteamManager::new(480);
     let wallpaper_mgr = Arc::new(WallpaperManager::new());
     let workshop_mgr = WorkshopManager::new();
+    let request_manager = Arc::new(RequestManager::new(wallpaper_mgr.clone()));
 
     let app_state = AppState {
         wallpaper_mgr: wallpaper_mgr.clone(),
         steam_mgr: steam_mgr.clone(),
         workshop_mgr,
+        request_manager: request_manager.clone(),
     };
 
     tauri::Builder::default()
@@ -704,37 +714,13 @@ fn main() {
                 eprintln!("[Tray] Warning: could not initialize system tray: {}", e);
             }
 
-            // Restore active wallpaper playback if present
+            // Restore active wallpaper playback if present via RequestManager
+            let req_mgr_init = request_manager.clone();
             let wp_mgr_init = wallpaper_mgr.clone();
             tauri::async_runtime::spawn(async move {
                 let maybe_active = wp_mgr_init.active_wallpaper.lock().unwrap().clone();
                 if let Some(active) = maybe_active {
-                    let _ = wp_mgr_init.apply_wallpaper(active, None);
-                }
-            });
-
-            // Start fullscreen game detection monitor task
-            let wp_mgr = wallpaper_mgr.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut was_game_fullscreen = false;
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    let has_active_wp = wp_mgr.active_wallpaper.lock().unwrap().is_some();
-                    if has_active_wp {
-                        let pause_on_fullscreen = wp_mgr.current_settings.lock().unwrap().pause_on_fullscreen;
-                        if pause_on_fullscreen {
-                            let is_game = performance::GameDetector::is_fullscreen_app_active();
-                            if is_game && !was_game_fullscreen {
-                                println!("[AetherPaper] Fullscreen game detected -> Pausing wallpaper");
-                                let _ = wp_mgr.set_paused(true);
-                                was_game_fullscreen = true;
-                            } else if !is_game && was_game_fullscreen {
-                                println!("[AetherPaper] Fullscreen game exited -> Resuming wallpaper");
-                                let _ = wp_mgr.set_paused(false);
-                                was_game_fullscreen = false;
-                            }
-                        }
-                    }
+                    let _ = req_mgr_init.apply_wallpaper(active, None).await;
                 }
             });
 
@@ -765,6 +751,7 @@ fn main() {
             is_window_maximized,
             hide_window,
             exit_app,
+            safe_exit_app,
             open_storage_dir,
             get_cache_stats,
             clear_variant_cache,

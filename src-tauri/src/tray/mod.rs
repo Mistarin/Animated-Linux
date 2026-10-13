@@ -36,19 +36,26 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "toggle_pause" => {
                     if let Some(state) = app.try_state::<AppState>() {
                         let is_paused = state.wallpaper_mgr.is_paused();
-                        let _ = state.wallpaper_mgr.set_paused(!is_paused);
+                        let req_mgr = state.request_manager.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = req_mgr.set_playback_state(!is_paused, 0, true, 1.0).await;
+                        });
                     }
                 }
                 "stop_wallpaper" => {
                     if let Some(state) = app.try_state::<AppState>() {
-                        let _ = state.wallpaper_mgr.stop();
+                        let req_mgr = state.request_manager.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = req_mgr.stop_wallpaper().await;
+                        });
                     }
                 }
                 "quit" => {
                     if let Some(state) = app.try_state::<AppState>() {
-                        let _ = state.wallpaper_mgr.stop();
+                        state.request_manager.send_safe_quit_detached(app.clone());
+                    } else {
+                        app.exit(0);
                     }
-                    std::process::exit(0);
                 }
                 _ => {}
             }

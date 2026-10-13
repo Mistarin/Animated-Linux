@@ -126,6 +126,7 @@ function renderStaticIcons() {
   };
 
   setIcon('icon-import-slot', Icons.plus);
+  setIcon('icon-exit-slot', Icons.exit);
   setIcon('icon-tab-library', Icons.library);
   setIcon('icon-tab-displays', Icons.displays);
   setIcon('icon-tab-settings', Icons.settings);
@@ -692,9 +693,13 @@ async function onQualitySliderChanged(val) {
   settingQualityTitle.textContent = profile.title;
   settingQualityDesc.textContent = profile.desc;
 
-  await syncPerformanceSettings();
+  // 1. Immediately update UI optimize button highlights synchronously for 0ms latency
+  checkVariantCacheState();
 
-  // Variant caching behavior for active wallpaper
+  // 2. Perform backend synchronization in background without stalling UI animations
+  syncPerformanceSettings().catch((e) => console.error('Failed to sync performance settings:', e));
+
+  // 3. Variant caching behavior for active wallpaper
   if (activeWallpaper) {
     const isCached = (activeWallpaper.cached_qualities || [5]).includes(val);
     if (isCached) {
@@ -707,13 +712,12 @@ async function onQualitySliderChanged(val) {
         const idx = wallpapers.findIndex((w) => w.id === updated.id);
         if (idx !== -1) wallpapers[idx] = updated;
         nowPlayingSub.textContent = `Playing on Desktop (${updated.format.toUpperCase()} • ${updated.resolution || 'HD'})`;
+        checkVariantCacheState();
       } catch (e) {
         console.error('Failed to switch to cached variant:', e);
       }
     }
   }
-
-  checkVariantCacheState();
 }
 
 // Updates the per-card optimize button states across the library grid
@@ -916,7 +920,7 @@ function setupImportAndDrop() {
 
 // Window Controls & Exit Modal Logic
 function setupWindowControls() {
-  const getCloseBehavior = () => localStorage.getItem('close_behavior') || 'ask';
+  const getCloseBehavior = () => localStorage.getItem('close_behavior') || 'tray';
 
   const updateSettingDropdown = () => {
     if (settingCloseBehavior) {
@@ -926,6 +930,14 @@ function setupWindowControls() {
 
   updateSettingDropdown();
 
+  // Header Exit button
+  const btnHeaderExit = document.getElementById('btn-header-exit');
+  if (btnHeaderExit) {
+    btnHeaderExit.addEventListener('click', () => {
+      invoke('exit_app').catch(console.error);
+    });
+  }
+
   // Settings dropdown change
   if (settingCloseBehavior) {
     settingCloseBehavior.addEventListener('change', (e) => {
@@ -933,10 +945,10 @@ function setupWindowControls() {
     });
   }
 
-  // Reset prompt button
+  // Reset prompt button to default (tray)
   if (btnResetClosePref) {
     btnResetClosePref.addEventListener('click', () => {
-      localStorage.setItem('close_behavior', 'ask');
+      localStorage.setItem('close_behavior', 'tray');
       updateSettingDropdown();
     });
   }

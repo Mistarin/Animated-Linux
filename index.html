@@ -24,6 +24,10 @@
           <span id="icon-import-slot"></span>
           <span>Import Video</span>
         </button>
+        <button class="btn btn-secondary btn-header-exit" id="btn-header-exit" title="Exit Animated Linux (Stops wallpaper and quits)">
+          <span id="icon-exit-slot"></span>
+          <span>Exit</span>
+        </button>
       </div>
     </header>
 
@@ -178,13 +182,13 @@
             </p>
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <select id="setting-close-behavior" style="width: 320px;">
-                <option value="ask" selected>Ask every time (Show Controls Dialog)</option>
-                <option value="tray">Minimize to System Tray (Keep wallpaper running)</option>
+                <option value="tray" selected>Minimize to System Tray (Keep wallpaper running)</option>
+                <option value="ask">Ask every time (Show Controls Dialog)</option>
                 <option value="minimize">Minimize to Taskbar</option>
                 <option value="quit">Quit Application completely</option>
               </select>
-              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to asking every time" style="font-size: 0.8rem; padding: 6px 12px;">
-                Reset Prompt
+              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to default (Minimize to Tray)" style="font-size: 0.8rem; padding: 6px 12px;">
+                Reset to Default
               </button>
             </div>
           </div>

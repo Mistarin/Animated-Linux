@@ -377,29 +377,7 @@ input[type="reset"] {
   }
 }
 
-.btn-header-exit {
-  background: #181820 !important;
-  background-color: #181820 !important;
-  background-image: none !important;
-  color: #a1a1aa !important;
-  border: 1px solid #2e2e38 !important;
-  padding: 6px 13px;
-  font-size: 0.82rem;
-  font-weight: 400;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.15s ease !important;
-}
 
-.btn-header-exit:hover {
-  background: #271418 !important;
-  background-color: #271418 !important;
-  border-color: #7f1d1d !important;
-  color: #f87171 !important;
-}
-
-.btn-header-exit svg {
-  stroke: currentColor;
-  transition: stroke 0.2s ease;
-}
 
 /* Nav Bar */
 .nav-bar {

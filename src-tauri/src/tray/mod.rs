@@ -13,10 +13,17 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     let menu = Menu::with_items(app, &[&open_item, &play_pause_item, &stop_item, &quit_item])?;
 
-    let _tray = TrayIconBuilder::new()
+    let tray_builder = TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("Animated Linux")
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(false);
+
+    let icon = app.default_window_icon()
+        .cloned()
+        .unwrap_or_else(|| tauri::include_image!("icons/icon.png"));
+
+    let _tray = tray_builder
+        .icon(icon)
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "open_window" => {

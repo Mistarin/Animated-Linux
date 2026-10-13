@@ -167,7 +167,6 @@ function renderStaticIcons() {
   };
 
   setIcon('icon-import-slot', Icons.plus);
-  setIcon('icon-exit-slot', Icons.exit);
   setIcon('icon-folder-slot', Icons.folder);
   setIcon('icon-folder-settings-slot', Icons.folder);
   setIcon('icon-clear-search-slot', Icons.x);
@@ -1042,13 +1041,6 @@ function setupWindowControls() {
 
   updateSettingDropdown();
 
-  // Header Exit button
-  const btnHeaderExit = document.getElementById('btn-header-exit');
-  if (btnHeaderExit) {
-    btnHeaderExit.addEventListener('click', () => {
-      invoke('exit_app').catch(console.error);
-    });
-  }
 
   // Settings dropdown change
   if (settingCloseBehavior) {

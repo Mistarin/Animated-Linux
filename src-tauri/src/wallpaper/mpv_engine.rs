@@ -106,6 +106,17 @@ impl WallpaperBackend for MpvBackend {
             _ => {}
         }
 
+        // Geometry: fill mode and pan offsets
+        match settings.fill_mode {
+            0 => { cmd.arg("--keepaspect=no"); }
+            1 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0"); }
+            2 => { cmd.arg("--keepaspect=yes").arg("--panscan=1.0"); }
+            3 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0").arg("--video-unscaled=yes"); }
+            _ => {}
+        }
+        cmd.arg(format!("--video-pan-x={}", settings.pan_x));
+        cmd.arg(format!("--video-pan-y={}", settings.pan_y));
+
         let child = cmd.spawn().map_err(|e| format!("Failed to start mpv: {}", e))?;
 
         *proc_lock = Some(child);
@@ -128,6 +139,20 @@ impl WallpaperBackend for MpvBackend {
 
     fn set_speed(&self, speed: f32) -> Result<(), String> {
         Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "speed", {}]}}"#, speed))
+    }
+
+    fn set_geometry(&self, fill_mode: u32, pan_x: f32, pan_y: f32) -> Result<(), String> {
+        let (keepaspect, panscan) = match fill_mode {
+            0 => ("false", "0.0"),
+            1 => ("true", "0.0"),
+            2 => ("true", "1.0"),
+            _ => ("true", "0.0"),
+        };
+        let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "keepaspect", {}]}}"#, keepaspect));
+        let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "panscan", {}]}}"#, panscan));
+        let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "video-pan-x", {}]}}"#, pan_x));
+        let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "video-pan-y", {}]}}"#, pan_y));
+        Ok(())
     }
 
     fn stop(&self, _screen: Option<i32>) -> Result<(), String> {

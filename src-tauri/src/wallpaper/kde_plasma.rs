@@ -203,6 +203,23 @@ for (var i = 0; i < allDesktops.length; i++) {{
         Ok(())
     }
 
+    fn set_geometry(&self, fill_mode: u32, _pan_x: f32, _pan_y: f32) -> Result<(), String> {
+        let script = format!(
+            r#"
+var allDesktops = desktops();
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+    d.writeConfig("FillMode", {fill_mode});
+    d.reloadConfig();
+}}
+"#,
+            fill_mode = fill_mode
+        );
+        Self::run_plasma_script(&script)?;
+        Ok(())
+    }
+
     fn stop(&self, screen: Option<i32>) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
         let script = format!(

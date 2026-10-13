@@ -68,6 +68,7 @@ fn import_wallpaper_internal(state: &AppState, source_path: &str) -> Result<Wall
         file_path: dest_video.to_string_lossy().to_string(),
         thumbnail_path: dest_thumb.to_string_lossy().to_string(),
         thumbnail_data,
+        cached_qualities: vec![5],
         duration_secs: duration,
         resolution,
         format: ext,
@@ -216,14 +217,80 @@ fn update_performance_settings(
     quality_level: u32,
     target_fps: u32,
     pause_on_fullscreen: bool,
+    pause_policy: u32,
     hardware_accel: bool,
 ) -> Result<PlaybackSettings, String> {
     state.wallpaper_mgr.update_performance_settings(
         quality_level,
         target_fps,
         pause_on_fullscreen,
+        pause_policy,
         hardware_accel,
     )
+}
+
+#[tauri::command]
+fn set_video_geometry(
+    state: State<'_, AppState>,
+    fill_mode: u32,
+    pan_x: f32,
+    pan_y: f32,
+) -> Result<(), String> {
+    state.wallpaper_mgr.set_geometry(fill_mode, pan_x, pan_y)
+}
+
+#[tauri::command]
+fn switch_wallpaper_quality(
+    state: State<'_, AppState>,
+    id: String,
+    quality_level: u32,
+) -> Result<WallpaperItem, String> {
+    let mut library = state.wallpaper_mgr.load_library();
+    let pos = library
+        .iter()
+        .position(|w| w.id == id)
+        .ok_or_else(|| "Wallpaper not found".to_string())?;
+
+    let item = &mut library[pos];
+    let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
+    let orig_backup = wallpapers_dir.join(format!("{}_source.{}", id, item.format));
+
+    let variant_path = if quality_level == 5 {
+        if orig_backup.exists() {
+            orig_backup
+        } else {
+            PathBuf::from(&item.file_path)
+        }
+    } else {
+        wallpapers_dir.join(format!("{}_q{}.mp4", id, quality_level))
+    };
+
+    if !variant_path.exists() {
+        return Err(format!("Variant Q{} is not cached yet", quality_level));
+    }
+
+    item.file_path = variant_path.to_string_lossy().to_string();
+    if let Some(res) = get_video_resolution(&variant_path) {
+        item.resolution = res;
+    }
+    if let Some(dur) = get_video_duration(&variant_path) {
+        item.duration_secs = dur;
+    }
+
+    let updated = item.clone();
+    state.wallpaper_mgr.save_library(&library)?;
+
+    let active_id = {
+        let active = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
+        active.as_ref().map(|w| w.id.clone())
+    };
+    if let Some(active_id) = active_id {
+        if active_id == id {
+            let _ = state.wallpaper_mgr.apply_wallpaper(updated.clone(), None);
+        }
+    }
+
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -240,36 +307,41 @@ fn compress_wallpaper(
         .ok_or_else(|| "Wallpaper not found".to_string())?;
 
     let item = &mut library[pos];
-    let video_path = PathBuf::from(&item.file_path);
-    if !video_path.exists() {
+    let current_video_path = PathBuf::from(&item.file_path);
+    if !current_video_path.exists() {
         return Err("Source video file does not exist".to_string());
     }
 
     let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
     let orig_backup = wallpapers_dir.join(format!("{}_source.{}", id, item.format));
 
-    // Preserve original source untouched if not backed up yet
+    // Preserve original source untouched
     if !orig_backup.exists() {
-        let _ = std::fs::copy(&video_path, &orig_backup);
+        let _ = std::fs::copy(&current_video_path, &orig_backup);
     }
 
     let input_source = if orig_backup.exists() {
         orig_backup.clone()
     } else {
-        video_path.clone()
+        current_video_path.clone()
     };
 
-    if quality_level == 5 && target_fps == 0 {
-        // Revert to raw untouched source
-        let _ = std::fs::copy(&input_source, &video_path);
+    let target_variant_path = if quality_level == 5 {
+        orig_backup.clone()
     } else {
-        // Build ffmpeg filter
+        wallpapers_dir.join(format!("{}_q{}.mp4", id, quality_level))
+    };
+
+    if quality_level == 5 {
+        item.file_path = orig_backup.to_string_lossy().to_string();
+    } else {
+        // Q4 is 4K (2160p), Q3 is 2K (1440p), Q2 is FULLHD (1080p), Q1 is HD or lower (720p)
         let (max_height, crf) = match quality_level {
             1 => (720, "28"),
-            2 => (1080, "25"),
-            3 => (1080, "22"),
-            4 => (1440, "19"),
-            _ => (1080, "22"),
+            2 => (1080, "24"),
+            3 => (1440, "21"),
+            4 => (2160, "18"),
+            _ => (1080, "24"),
         };
 
         let fps = if target_fps > 0 {
@@ -278,14 +350,14 @@ fn compress_wallpaper(
             match quality_level {
                 1 => 24,
                 2 => 30,
-                3 => 30,
+                3 => 60,
                 4 => 60,
                 _ => 30,
             }
         };
 
         let vf = format!("scale=-2:{},fps={}", max_height, fps);
-        let temp_output = wallpapers_dir.join(format!("{}_temp_opt.mp4", id));
+        let temp_output = wallpapers_dir.join(format!("{}_temp_q{}.mp4", id, quality_level));
 
         let status = Command::new("ffmpeg")
             .arg("-y")
@@ -303,15 +375,20 @@ fn compress_wallpaper(
             return Err("ffmpeg failed to compress video".to_string());
         }
 
-        // Replace current video file with optimized file
-        let _ = std::fs::rename(&temp_output, &video_path);
+        let _ = std::fs::rename(&temp_output, &target_variant_path);
+        item.file_path = target_variant_path.to_string_lossy().to_string();
     }
 
-    // Refresh resolution and duration
-    if let Some(res) = get_video_resolution(&video_path) {
+    if !item.cached_qualities.contains(&quality_level) {
+        item.cached_qualities.push(quality_level);
+        item.cached_qualities.sort();
+        item.cached_qualities.dedup();
+    }
+
+    if let Some(res) = get_video_resolution(&target_variant_path) {
         item.resolution = res;
     }
-    if let Some(dur) = get_video_duration(&video_path) {
+    if let Some(dur) = get_video_duration(&target_variant_path) {
         item.duration_secs = dur;
     }
     let thumb_path = PathBuf::from(&item.thumbnail_path);
@@ -455,6 +532,8 @@ fn main() {
             get_performance_settings,
             update_performance_settings,
             compress_wallpaper,
+            switch_wallpaper_quality,
+            set_video_geometry,
             get_monitors,
             get_steam_status,
             get_workshop_items,

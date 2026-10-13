@@ -153,12 +153,14 @@ impl WallpaperManager {
         quality_level: u32,
         target_fps: u32,
         pause_on_fullscreen: bool,
+        pause_policy: u32,
         hardware_accel: bool,
     ) -> Result<PlaybackSettings, String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.quality_level = quality_level.clamp(1, 5);
         settings.target_fps = target_fps;
         settings.pause_on_fullscreen = pause_on_fullscreen;
+        settings.pause_policy = pause_policy;
         settings.hardware_accel = hardware_accel;
         let updated = settings.clone();
         drop(settings);
@@ -171,6 +173,15 @@ impl WallpaperManager {
         }
 
         Ok(updated)
+    }
+
+    pub fn set_geometry(&self, fill_mode: u32, pan_x: f32, pan_y: f32) -> Result<(), String> {
+        let mut settings = self.current_settings.lock().unwrap();
+        settings.fill_mode = fill_mode;
+        settings.pan_x = pan_x;
+        settings.pan_y = pan_y;
+        let backend = self.get_active_backend();
+        backend.set_geometry(fill_mode, pan_x, pan_y)
     }
 
     pub fn stop(&self) -> Result<(), String> {
@@ -187,6 +198,19 @@ impl WallpaperManager {
                     if it.thumbnail_data.is_none() {
                         it.thumbnail_data = backend::encode_thumbnail_base64(Path::new(&it.thumbnail_path));
                     }
+                    // Scan and detect cached variants
+                    let mut cached = Vec::new();
+                    cached.push(5); // Q5 is original source
+                    for q in 1..=4 {
+                        let q_path = self.storage_dir.join(format!("{}_q{}.{}", it.id, q, it.format));
+                        let q_mp4 = self.storage_dir.join(format!("{}_q{}.mp4", it.id, q));
+                        if q_path.exists() || q_mp4.exists() {
+                            cached.push(q);
+                        }
+                    }
+                    cached.sort();
+                    cached.dedup();
+                    it.cached_qualities = cached;
                 }
                 return items;
             }

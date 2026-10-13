@@ -163,16 +163,36 @@ body {
 }
 
 .btn-primary {
-  background: var(--btn-primary-bg);
-  color: var(--btn-primary-text);
-  border: 1px solid var(--btn-primary-bg);
+  background: #22222a;
+  color: #f4f4f5;
+  border: 1px solid #383842;
   font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: var(--btn-primary-hover);
-  border-color: var(--btn-primary-hover);
-  color: #000;
+  background: #2c2c36;
+  border-color: #52525e;
+  color: #ffffff;
+}
+
+.btn-optimize-ready {
+  background: #059669 !important;
+  color: #ffffff !important;
+  border: 1px solid #10b981 !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+  font-weight: 500;
+  animation: pulseGreen 2s infinite ease-in-out;
+}
+
+@keyframes pulseGreen {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+    border-color: #10b981;
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+    border-color: #34d399;
+  }
 }
 
 .btn-success {
@@ -519,20 +539,27 @@ input[type="range"] {
 }
 
 select {
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-card);
+  background-color: #1a1a20 !important;
+  color: #f4f4f6 !important;
+  border: 1px solid #2d2d36;
   border-radius: var(--radius-sm);
   padding: 5px 8px;
   font-size: 0.78rem;
   font-family: var(--font-family);
-  font-weight: 300;
+  font-weight: 400;
   outline: none;
   transition: border-color var(--transition-fast);
+  cursor: pointer;
 }
 
 select:focus {
-  border-color: var(--border-hover);
+  border-color: #52525e;
+}
+
+select option {
+  background-color: #18181c !important;
+  color: #f4f4f6 !important;
+  padding: 6px 10px;
 }
 
 /* Empty State / Drag Overlay */

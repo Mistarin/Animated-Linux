@@ -8,7 +8,7 @@ RELEASE_BIN="$ROOT_DIR/src-tauri/target/release/aetherpaper"
 DEBUG_BIN="$ROOT_DIR/src-tauri/target/debug/aetherpaper"
 
 echo "================================================================"
-echo "          AetherPaper — Git Edition Launcher                    "
+echo "          Animated Linux Launcher                               "
 echo "================================================================"
 
 # Locate libsteam_api.so from cargo build artifacts

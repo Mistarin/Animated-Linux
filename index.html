@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AetherPaper — Git Edition</title>
+    <title>Animated Linux</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -13,22 +13,12 @@
     <!-- Top Header -->
     <header class="header">
       <div class="brand">
-        <img src="/src-tauri/icons/32x32.png" alt="AetherPaper Logo" class="brand-icon" id="brand-icon" />
-        <span class="brand-title">AetherPaper</span>
+        <img src="/src-tauri/icons/32x32.png" alt="Animated Linux Logo" class="brand-icon" id="brand-icon" />
+        <span class="brand-title">Animated Linux</span>
         <span class="brand-badge">Git Edition</span>
       </div>
 
       <div class="header-actions">
-        <div class="steam-badge" id="steam-status-badge">
-          <span class="status-dot" id="steam-dot"></span>
-          <span id="steam-user-label">Detecting Steam...</span>
-        </div>
-
-        <button class="btn" id="btn-add-steam" title="Register shortcut directly in your Steam Library">
-          <span id="icon-steam-slot"></span>
-          <span>Add to Steam</span>
-        </button>
-
         <button class="btn btn-primary" id="btn-import">
           <span id="icon-import-slot"></span>
           <span>Import Video</span>
@@ -41,10 +31,6 @@
       <div class="nav-tab active" data-tab="library" id="tab-btn-library">
         <span id="icon-tab-library"></span>
         <span>My Library</span>
-      </div>
-      <div class="nav-tab" data-tab="workshop" id="tab-btn-workshop">
-        <span id="icon-tab-workshop"></span>
-        <span>Steam Workshop</span>
       </div>
       <div class="nav-tab" data-tab="displays" id="tab-btn-displays">
         <span id="icon-tab-displays"></span>
@@ -81,26 +67,6 @@
         </div>
       </section>
 
-      <!-- Steam Workshop Tab -->
-      <section id="tab-workshop" class="hidden">
-        <div class="section-header">
-          <div>
-            <h2 class="section-title">Steam Workshop Wallpapers</h2>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px;">
-              Discover, download, and subscribe to community-created animated wallpapers.
-            </p>
-          </div>
-          <button class="btn" id="btn-publish-workshop">
-            <span id="icon-publish-slot"></span>
-            <span>Publish Wallpaper</span>
-          </button>
-        </div>
-
-        <div class="grid-cards" id="workshop-grid">
-          <!-- Workshop items dynamically populated -->
-        </div>
-      </section>
-
       <!-- Displays Tab -->
       <section id="tab-displays" class="hidden">
         <div class="section-header">
@@ -117,37 +83,23 @@
           <h2 class="section-title">Application Settings</h2>
         </div>
 
-        <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 22px; max-width: 640px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 22px; max-width: 680px; display: flex; flex-direction: column; gap: 20px;">
           <div>
-            <h3 style="font-size: 0.92rem; font-weight: 500; margin-bottom: 6px;">Steam Integration</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">
-              Configured with Steamworks API. Rich Presence displays your active wallpaper on your Steam profile.
-            </p>
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <label style="font-size: 0.8rem; color: var(--text-secondary);">App ID:</label>
-              <input type="number" id="setting-appid" value="480" style="background: var(--bg-surface); border: 1px solid var(--border-card); padding: 5px 10px; border-radius: 4px; color: #fff; width: 100px; font-family: var(--font-family);" />
-              <button class="btn" id="btn-save-appid">Save App ID</button>
-            </div>
-          </div>
-
-          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
-
-          <div>
-            <h3 style="font-size: 0.92rem; font-weight: 500; margin-bottom: 6px;">Performance, FPS & Compression</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px;">
-              Tune wallpaper resource consumption, limit rendering frame rates, and compress videos for minimal CPU/GPU usage.
+            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Performance & Variant Compression</h3>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 14px;">
+              Tune wallpaper quality levels. Each wallpaper automatically caches variants for instantaneous switching and minimal system overhead.
             </p>
 
-            <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
               <!-- Quality Slider (1 to 5) -->
               <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <label style="font-size: 0.82rem; color: var(--text-secondary);">Quality & Compression Profile:</label>
-                  <span id="setting-quality-title" style="font-size: 0.8rem; font-weight: 500; color: var(--text-main);">Level 3: Balanced</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="font-size: 0.82rem; color: var(--text-secondary);">Active Profile Level (Q1 - Q5):</label>
+                  <span id="setting-quality-title" style="font-size: 0.82rem; font-weight: 500; color: var(--text-main);">Q5: Native (Source Resolution)</span>
                 </div>
-                <input type="range" id="setting-quality-slider" min="1" max="5" value="3" step="1" style="width: 100%;" />
-                <div id="setting-quality-desc" style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
-                  Balanced: Crisp 1080p, standard bitrate, low GPU overhead. Recommended for all systems.
+                <input type="range" id="setting-quality-slider" min="1" max="5" value="5" step="1" style="width: 100%;" />
+                <div id="setting-quality-desc" style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                  Untouched source video preserving native frame rate, resolution, and original bitrate.
                 </div>
               </div>
 
@@ -155,9 +107,9 @@
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                   <div style="font-size: 0.82rem; color: var(--text-secondary);">Target Rendering FPS:</div>
-                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Caps playback frame rate to save power and GPU cycles</div>
+                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Limits playback refresh rate to eliminate wasted GPU draw cycles</div>
                 </div>
-                <select id="setting-fps-select" style="width: 180px;">
+                <select id="setting-fps-select" style="width: 200px;">
                   <option value="15">15 FPS (Battery Saver)</option>
                   <option value="24">24 FPS (Cinematic 24p)</option>
                   <option value="30" selected>30 FPS (Smooth / Low GPU)</option>
@@ -166,22 +118,34 @@
                 </select>
               </div>
 
+              <!-- Granular Pause Policy -->
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <div style="font-size: 0.82rem; color: var(--text-secondary);">Pausing Trigger Policy:</div>
+                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Control when the animated wallpaper automatically pauses</div>
+                </div>
+                <select id="setting-pause-policy" style="width: 200px;">
+                  <option value="1" selected>Fullscreen Game / App</option>
+                  <option value="2">Maximized Window Active</option>
+                  <option value="3">Any Window Active / Covered</option>
+                  <option value="0">Never Pause (Always Play)</option>
+                  <option value="4">Battery Power (Laptops)</option>
+                </select>
+              </div>
+
+              <!-- Optimization Actions -->
               <div style="display: flex; gap: 10px; margin-top: 4px;">
                 <button class="btn btn-primary" id="btn-compress-active">
                   <span id="icon-compress-active-slot"></span>
-                  <span>Optimize Active Wallpaper</span>
+                  <span>Optimize / Cache Current Variant</span>
                 </button>
                 <button class="btn" id="btn-compress-all">
                   <span id="icon-compress-all-slot"></span>
-                  <span>Compress Entire Library</span>
+                  <span>Cache All Library Variants</span>
                 </button>
               </div>
 
-              <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.82rem; margin-top: 6px; color: var(--text-secondary);">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                  <input type="checkbox" id="chk-pause-fullscreen" checked />
-                  <span>Pause animated wallpaper when fullscreen games/apps are active</span>
-                </label>
+              <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.82rem; margin-top: 4px; color: var(--text-secondary);">
                 <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                   <input type="checkbox" id="chk-hardware-accel" checked />
                   <span>Enable GPU hardware decoding (VA-API / NVDEC)</span>
@@ -193,7 +157,7 @@
           <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
 
           <div>
-            <h3 style="font-size: 0.92rem; font-weight: 500; margin-bottom: 6px;">Wallpaper Engine Backend</h3>
+            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Wallpaper Engine Backend</h3>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
               Active: <strong>KDE Plasma 6 Native D-Bus Engine</strong> (Zero-overhead, hardware accelerated).
             </p>
@@ -223,21 +187,42 @@
         <button class="ctrl-btn" id="btn-stop-wp" title="Stop & Restore Static Desktop">
           <!-- Injected via JS -->
         </button>
-        <button class="ctrl-btn" id="btn-toggle-mute" title="Mute / Unmute">
-          <!-- Injected via JS -->
-        </button>
       </div>
 
+      <!-- Geometry, Quality, and Speed Controls (Zero audio controls) -->
       <div class="player-sliders">
-        <div class="slider-group" title="Quality / Compression Profile (1 = Max Performance, 5 = Source)">
+        <!-- Sizing / Fill Mode -->
+        <div class="slider-group" title="Video Sizing / Fill Mode">
+          <span id="icon-sizing-slot" style="display: flex;"></span>
+          <select id="select-sizing" style="padding: 3px 6px;">
+            <option value="2" selected>Fill / Zoom</option>
+            <option value="1">Fit Aspect</option>
+            <option value="0">Stretch</option>
+            <option value="3">Center</option>
+          </select>
+        </div>
+
+        <!-- Pan Position Offsets -->
+        <div class="slider-group" title="Horizontal Pan Position Offset">
+          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">X:</span>
+          <input type="range" id="slider-pan-x" min="-50" max="50" value="0" style="width: 50px;" />
+        </div>
+        <div class="slider-group" title="Vertical Pan Position Offset">
+          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">Y:</span>
+          <input type="range" id="slider-pan-y" min="-50" max="50" value="0" style="width: 50px;" />
+          <button class="btn btn-icon" id="btn-reset-pan" title="Reset Position" style="padding: 2px 4px; font-size: 0.68rem; color: var(--text-dim);">
+            0
+          </button>
+        </div>
+
+        <!-- Quality Profile (1 - 5) -->
+        <div class="slider-group" title="Quality Profile (Q1: HD, Q2: FULLHD, Q3: 2K, Q4: 4K, Q5: Native)">
           <span id="icon-slider-quality-slot" style="display: flex;"></span>
-          <input type="range" id="slider-quality" min="1" max="5" value="3" step="1" style="width: 65px;" />
-          <span id="label-quality-val" style="font-size: 0.74rem; color: var(--text-secondary); min-width: 22px;">Q3</span>
+          <input type="range" id="slider-quality" min="1" max="5" value="5" step="1" style="width: 60px;" />
+          <span id="label-quality-val" style="font-size: 0.74rem; color: var(--text-secondary); min-width: 22px;">Q5</span>
         </div>
-        <div class="slider-group" title="Volume">
-          <span id="icon-slider-volume-slot" style="display: flex;"></span>
-          <input type="range" id="slider-volume" min="0" max="100" value="0" style="width: 70px;" />
-        </div>
+
+        <!-- Speed Dropdown with dark contrast -->
         <div class="slider-group" title="Playback Speed">
           <span id="icon-slider-speed-slot" style="display: flex;"></span>
           <select id="select-speed" style="padding: 3px 6px;">

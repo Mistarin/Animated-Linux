@@ -1,6 +1,6 @@
-# AetherPaper Setup & Scripts
+# Animated Linux Setup & Scripts
 
-Utility scripts for building, packaging, containerizing, and launching AetherPaper Git Edition.
+Utility scripts for building, packaging, containerizing, and launching Animated Linux.
 
 ---
 

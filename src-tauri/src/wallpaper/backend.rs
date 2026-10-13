@@ -9,6 +9,8 @@ pub struct WallpaperItem {
     pub thumbnail_path: String,
     #[serde(default)]
     pub thumbnail_data: Option<String>,
+    #[serde(default)]
+    pub cached_qualities: Vec<u32>,
     pub duration_secs: f64,
     pub resolution: String,
     pub format: String,
@@ -41,8 +43,11 @@ pub struct PlaybackSettings {
     pub speed: f32,
     pub is_paused: bool,
     pub pause_on_fullscreen: bool,
-    pub fill_mode: u32, // 0: Stretch, 1: Keep Aspect Ratio, 2: Crop/Fill
-    pub quality_level: u32, // 1: Max Performance, 2: Economy, 3: Balanced, 4: High Fidelity, 5: Raw Source
+    pub pause_policy: u32, // 0: Always Play, 1: Fullscreen Game/App, 2: Maximized Window, 3: Any Window Focused, 4: Battery
+    pub fill_mode: u32,    // 0: Stretch, 1: Keep Aspect / Fit, 2: Crop / Zoom / Expand, 3: Center
+    pub pan_x: f32,        // -1.0 to 1.0 (Horizontal position offset)
+    pub pan_y: f32,        // -1.0 to 1.0 (Vertical position offset)
+    pub quality_level: u32, // 1: HD or lower, 2: FULLHD, 3: 2K, 4: 4K, 5: Native Source
     pub target_fps: u32,    // 0: Source/Native, 15, 24, 30, 60
     pub hardware_accel: bool,
 }
@@ -55,8 +60,11 @@ impl Default for PlaybackSettings {
             speed: 1.0,
             is_paused: false,
             pause_on_fullscreen: true,
+            pause_policy: 1,
             fill_mode: 2,
-            quality_level: 3,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            quality_level: 5,
             target_fps: 30,
             hardware_accel: true,
         }
@@ -79,5 +87,9 @@ pub trait WallpaperBackend: Send + Sync {
     fn resume(&self, screen: Option<i32>) -> Result<(), String>;
     fn set_volume(&self, volume: u32, muted: bool) -> Result<(), String>;
     fn set_speed(&self, speed: f32) -> Result<(), String>;
+    fn set_geometry(&self, fill_mode: u32, pan_x: f32, pan_y: f32) -> Result<(), String> {
+        let _ = (fill_mode, pan_x, pan_y);
+        Ok(())
+    }
     fn stop(&self, screen: Option<i32>) -> Result<(), String>;
 }

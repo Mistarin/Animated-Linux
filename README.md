@@ -1,33 +1,50 @@
-# AetherPaper — Git Edition
+# Animated Linux
 
-A high-performance, modern animated wallpaper engine for Linux (KDE Plasma 6 on Wayland, universal Wayland compositors, and X11) featuring a clean monochromatic interface, adaptive video compression, and optional Steamworks integration.
+A high-performance, modern animated wallpaper engine for Linux (KDE Plasma 6 on Wayland, universal Wayland compositors, and X11) featuring a clean monochromatic interface, per-wallpaper variant caching, video sizing and pan positioning controls, and granular pause policies.
 
 ---
 
 ## Features
 
-### Performance & Video Compression
-- **Quality Slider (Profiles 1 - 5)**:
-  - **Level 1 (Max Performance)**: Aggressive compression downscaled to 720p at 24 FPS with CRF 28. Lowest possible GPU and battery draw.
-  - **Level 2 (Economy)**: 1080p at 30 FPS with CRF 25. Smooth background playback for everyday efficiency.
-  - **Level 3 (Balanced - Recommended)**: Crisp 1080p at 30/60 FPS with CRF 22. Optimal balance of visual fidelity and system overhead.
-  - **Level 4 (High Fidelity)**: High bitrate 1440p/4K at 60 FPS with CRF 19. Maximum clarity for high-end displays.
-  - **Level 5 (Raw / Source)**: Untouched source video preserving native frame rate, resolution, and bitrate.
+### Performance & Per-Wallpaper Variant Caching
+- **Quality Scale (Q1 - Q5)**:
+  - **Q5 (Native)**: Untouched original source video preserving native resolution, frame rate, and original bitrate.
+  - **Q4 (4K)**: Ultra high-definition 4K encoding (`3840x2160`) at 60 FPS (`CRF 18`).
+  - **Q3 (2K)**: Quad HD 1440p encoding (`2560x1440`) at 60 FPS (`CRF 21`).
+  - **Q2 (FULLHD)**: Full HD 1080p encoding (`1920x1080`) at 30 FPS (`CRF 24`).
+  - **Q1 (HD or lower)**: Downscaled 720p encoding (`1280x720`) at 24 FPS (`CRF 28`). Minimal GPU load and maximum battery saving.
+- **Variant Caching (1 - 5)**:
+  - Each wallpaper automatically caches its rendered variants (`{id}_q1.mp4` through `{id}_q5.mp4`) in `./wallpapers/`.
+  - When switching the quality slider, if the active wallpaper already has that variant cached, it switches instantly with zero transcode delay.
+  - If the variant is not yet cached, the **"Optimize & Cache"** button turns vibrant green, indicating that clicking it will generate and cache the variant.
 - **Configurable Rendering FPS**:
   - Limit wallpaper playback to 15 FPS (Battery Saver), 24 FPS (Cinematic), 30 FPS (Smooth / Low GPU), 60 FPS (Fluid), or Native Source.
+- **Granular Pausing Policies**:
+  - Fullscreen Game / App (Performance default)
+  - Maximized Window Active
+  - Any Window Active / Covered
+  - Never Pause (Always Play)
+  - Battery Power (Laptops / Handhelds)
 - **Hardware-Accelerated Decoding**:
-  - Zero-copy hardware video decoding via VA-API and NVDEC.
-- **Smart Game Detector**:
-  - Automatically pauses animated wallpapers when fullscreen games or 3D applications become active, restoring normal playback on exit.
+  - Hardware video decoding via VA-API and NVDEC.
+
+### Video Sizing & Pan Position Controls
+- **Sizing Modes**:
+  - Fill / Zoom (Expand to fill screen while preserving aspect ratio)
+  - Fit Aspect (Fit entire video inside screen boundaries)
+  - Stretch (Stretch video to completely fill screen)
+  - Center (1:1 unscaled centered video)
+- **Pan Offsets (X & Y)**:
+  - Sliders allowing horizontal and vertical repositioning of the video layer with one-click zero reset.
 
 ### Wallpaper Management & Persistent Storage
 - **Predictable Local Storage**:
-  - All imported wallpapers, optimized video streams, thumbnails, and library definitions are organized persistently in the application's `./wallpapers/` directory.
+  - All wallpapers, cached quality variants, thumbnails, and library definitions are organized persistently in `./wallpapers/`.
 - **Inline Double-Click Renaming**:
-  - Double-click any wallpaper title in your library to rename it directly in place.
+  - Double-click any wallpaper title in your library to rename it in place.
 - **Smooth QOL Installation Flow**:
-  - Importing videos or subscribing to workshop items displays an immediate blurred preview with a thin white glowing scan line, transitioning smoothly to full clarity upon completion.
-- **Reliable Thumbnail Previews**:
+  - Importing videos displays an immediate blurred preview with a thin white glowing scan line, transitioning smoothly to full clarity upon completion.
+- **Reliable Base64 Previews**:
   - Base64 data streaming ensures instant, reliable thumbnail rendering across WebKitGTK without protocol or cross-origin restrictions.
 
 ### Multi-Backend Architecture
@@ -35,13 +52,6 @@ A high-performance, modern animated wallpaper engine for Linux (KDE Plasma 6 on 
   - Evaluates wallpaper containments via Plasma D-Bus API, delivering zero-overhead hardware-accelerated playback with full desktop icon, widget, and right-click menu interaction.
 - **Universal MPV Engine**:
   - Standalone hardware-accelerated background engine for Hyprland, Sway, GNOME, and X11 environments.
-
-### Steam & Community Workshop
-- Native Steamworks SDK client integration (`steamworks-rs`).
-- Steam Rich Presence displays your active wallpaper on your Steam profile.
-- Steam Workshop UGC support for community wallpapers.
-- One-click desktop shortcut installer (`shortcuts.vdf`) generating custom capsules, hero artwork, and logos.
-- System tray daemon keeping wallpapers active while allowing Steam games to run without interference.
 
 ---
 
@@ -57,7 +67,7 @@ A high-performance, modern animated wallpaper engine for Linux (KDE Plasma 6 on 
 All lifecycle management scripts are located in `./setup/`:
 
 ```bash
-# Launch optimized release binary:
+# Launch release binary:
 ./setup/launch.sh
 
 # Or launch in Live Development mode with Hot Module Replacement:
@@ -73,12 +83,6 @@ All lifecycle management scripts are located in `./setup/`:
 ./setup/build_image.sh --docker
 ```
 
-### Adding to Steam
-```bash
-./setup/install-steam-shortcut.sh
-```
-Restart Steam to see AetherPaper in your Steam Library.
-
 ---
 
 ## Project Structure
@@ -88,10 +92,8 @@ AnimatedWallpaper/
 ├── src-tauri/                 # Rust backend and system integrations
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
-│   ├── steam_appid.txt        # Development Steam App ID (480)
 │   └── src/
 │       ├── main.rs            # Application entrypoint & IPC commands
-│       ├── steam/             # Steamworks SDK, Workshop & shortcuts
 │       ├── wallpaper/         # KDE Plasma 6 D-Bus & MPV engines
 │       ├── monitors/          # Multi-screen detection
 │       ├── performance/       # Fullscreen game detector
@@ -101,20 +103,11 @@ AnimatedWallpaper/
 │   ├── icons.js               # Featherweight custom SVG icon suite
 │   └── styles/
 │       └── theme.css          # Monochromatic theme & animations
-├── setup/                     # Lifecycle scripts (launch, build, shortcut)
+├── setup/                     # Lifecycle scripts (launch, build)
 ├── wallpapers/                # Persistent application wallpaper storage
 │   └── thumbnails/            # Generated thumbnail cache
-├── steam_assets/              # Official Steam Library artwork assets
 └── assets/sample_wallpapers/  # Bundled sample looping videos
 ```
-
----
-
-## Performance Tips
-
-1. **On Battery / Laptops**: Set the Quality Slider to **Level 1** or **Level 2** and cap the Target Rendering FPS to **24 FPS** or **30 FPS**.
-2. **Library Compression**: Click **"Compress Entire Library"** in the Settings tab to re-encode all wallpapers to the selected quality profile, drastically lowering storage consumption and decoding overhead.
-3. **Gaming**: Keep **"Pause animated wallpaper when fullscreen games/apps are active"** checked in Settings for maximum frame rates in games.
 
 ---
 

@@ -735,45 +735,6 @@ select option {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Header Window Controls */
-.window-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 10px;
-  border-left: 1px solid var(--border-subtle);
-  padding-left: 10px;
-}
-
-.win-btn {
-  -webkit-appearance: none !important;
-  appearance: none !important;
-  background-image: none !important;
-  background-color: transparent !important;
-  border: 1px solid transparent !important;
-  color: var(--text-muted) !important;
-  border-radius: var(--radius-sm);
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.win-btn:hover {
-  background-color: #22222a !important;
-  color: var(--text-main) !important;
-  border-color: var(--border-card) !important;
-}
-
-.win-btn-close:hover {
-  background-color: rgba(239, 68, 68, 0.18) !important;
-  color: #f87171 !important;
-  border-color: rgba(239, 68, 68, 0.4) !important;
-}
-
 /* Modal Overlay & Close Controls Dialog */
 .modal-overlay {
   position: fixed;

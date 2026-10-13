@@ -87,11 +87,7 @@ const settingBackend = document.getElementById('setting-backend');
 const btnImport = document.getElementById('btn-import');
 const dropzone = document.getElementById('dropzone');
 
-// Window Controls & Close Dialog Elements
-const btnWinMinimize = document.getElementById('btn-win-minimize');
-const btnWinMaximize = document.getElementById('btn-win-maximize');
-const btnWinClose = document.getElementById('btn-win-close');
-
+// Close Controls Dialog Elements
 const modalCloseControls = document.getElementById('modal-close-controls');
 const btnCloseDialogCancel = document.getElementById('btn-close-dialog-cancel');
 const btnDialogCancelFooter = document.getElementById('btn-dialog-cancel-footer');
@@ -870,27 +866,6 @@ function setupWindowControls() {
     });
   }
 
-  // Header window buttons
-  if (btnWinMinimize) {
-    btnWinMinimize.addEventListener('click', async () => {
-      try {
-        await invoke('minimize_window');
-      } catch (err) {
-        console.error('Failed to minimize window:', err);
-      }
-    });
-  }
-
-  if (btnWinMaximize) {
-    btnWinMaximize.addEventListener('click', async () => {
-      try {
-        await invoke('toggle_maximize_window');
-      } catch (err) {
-        console.error('Failed to toggle maximize:', err);
-      }
-    });
-  }
-
   const showCloseDialog = () => {
     if (chkRememberCloseAction) chkRememberCloseAction.checked = false;
     modalCloseControls.classList.remove('hidden');
@@ -933,14 +908,7 @@ function setupWindowControls() {
     }
   };
 
-  if (btnWinClose) {
-    btnWinClose.addEventListener('click', (e) => {
-      e.stopPropagation();
-      triggerCloseFlow();
-    });
-  }
-
-  // Listen for native close requests emitted from Tauri backend
+  // Intercept native OS window close requests emitted from Tauri backend
   listen('window-close-requested', () => {
     triggerCloseFlow();
   });

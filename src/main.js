@@ -230,7 +230,19 @@ window.applyToDisplay = async (screenId) => {
 async function loadLibrary() {
   try {
     wallpapers = await invoke('get_wallpapers');
+    try {
+      const active = await invoke('get_active_wallpaper');
+      if (active) {
+        activeWallpaper = active;
+        nowPlayingThumb.src = getThumbnail(active);
+        nowPlayingTitle.textContent = active.title;
+        nowPlayingSub.textContent = `Playing on Desktop (${active.format.toUpperCase()} • ${active.resolution || 'HD'})`;
+        btnTogglePlay.innerHTML = Icons.pause;
+        isPlaying = true;
+      }
+    } catch (_) {}
     renderLibrary();
+    checkVariantCacheState();
   } catch (e) {
     console.error('Failed to load wallpapers:', e);
   }
@@ -287,6 +299,7 @@ function renderLibrary() {
       `;
       }
 
+      const isCachedForLevel = (wp.cached_qualities || [5]).includes(currentQuality);
       const cachedVariants = (wp.cached_qualities || [5])
         .map((q) => `Q${q}`)
         .join(' ');
@@ -308,10 +321,13 @@ function renderLibrary() {
               ${isActive ? `${Icons.check} Active` : `${Icons.play} Apply`}
             </button>
             <div style="display: flex; gap: 4px;">
-              <button class="btn btn-icon" style="color: var(--text-muted);" onclick="window.onOptimizeWallpaper('${wp.id}')" title="Optimize / Cache Variant">
+              <button class="btn btn-icon ${!isCachedForLevel ? 'btn-optimize-ready' : ''}" 
+                      id="btn-opt-${wp.id}" 
+                      onclick="window.onOptimizeWallpaper('${wp.id}')" 
+                      title="${!isCachedForLevel ? `Optimize / Cache Q${currentQuality}` : `Variant Q${currentQuality} Cached`}">
                 ${Icons.zap}
               </button>
-              <button class="btn btn-icon" style="color: var(--text-muted);" onclick="window.onDeleteWallpaper('${wp.id}')" title="Delete">
+              <button class="btn btn-icon" onclick="window.onDeleteWallpaper('${wp.id}')" title="Delete">
                 ${Icons.trash}
               </button>
             </div>
@@ -684,29 +700,72 @@ async function onQualitySliderChanged(val) {
   checkVariantCacheState();
 }
 
-// Makes Optimize / Compress button turn green if variant is NOT yet cached!
+// Updates the per-card optimize button states across the library grid
+function updateLibraryOptimizeButtons() {
+  wallpapers.forEach((wp) => {
+    const isCachedForLevel = (wp.cached_qualities || [5]).includes(currentQuality);
+    const optBtn = document.getElementById(`btn-opt-${wp.id}`);
+    if (optBtn) {
+      if (!isCachedForLevel) {
+        optBtn.classList.add('btn-optimize-ready');
+        optBtn.setAttribute('title', `Optimize / Cache Q${currentQuality}`);
+      } else {
+        optBtn.classList.remove('btn-optimize-ready');
+        optBtn.setAttribute('title', `Variant Q${currentQuality} Cached`);
+      }
+    }
+  });
+}
+
+// Makes Optimize / Compress buttons turn green if variant is NOT yet cached!
 function checkVariantCacheState() {
+  // 1. Active wallpaper optimize button
   if (!activeWallpaper) {
     btnCompressActive.classList.remove('btn-optimize-ready');
-    return;
-  }
-
-  const cached = activeWallpaper.cached_qualities || [5];
-  const isCached = cached.includes(currentQuality);
-
-  if (!isCached) {
-    btnCompressActive.classList.add('btn-optimize-ready');
     const labelSpan = btnCompressActive.querySelector('span:last-child');
     if (labelSpan) {
-      labelSpan.textContent = `Optimize & Cache Q${currentQuality}`;
+      labelSpan.textContent = 'Optimize / Cache Current Variant';
     }
   } else {
-    btnCompressActive.classList.remove('btn-optimize-ready');
-    const labelSpan = btnCompressActive.querySelector('span:last-child');
-    if (labelSpan) {
-      labelSpan.textContent = `Variant Q${currentQuality} Cached`;
+    const cached = activeWallpaper.cached_qualities || [5];
+    const isCached = cached.includes(currentQuality);
+
+    if (!isCached) {
+      btnCompressActive.classList.add('btn-optimize-ready');
+      const labelSpan = btnCompressActive.querySelector('span:last-child');
+      if (labelSpan) {
+        labelSpan.textContent = `Optimize & Cache Q${currentQuality}`;
+      }
+    } else {
+      btnCompressActive.classList.remove('btn-optimize-ready');
+      const labelSpan = btnCompressActive.querySelector('span:last-child');
+      if (labelSpan) {
+        labelSpan.textContent = `Variant Q${currentQuality} Cached`;
+      }
     }
   }
+
+  // 2. Cache entire library button
+  const uncachedCount = wallpapers.filter(
+    (w) => !(w.cached_qualities || [5]).includes(currentQuality)
+  ).length;
+  if (btnCompressAll) {
+    const labelSpanAll = btnCompressAll.querySelector('span:last-child');
+    if (uncachedCount > 0) {
+      btnCompressAll.classList.add('btn-optimize-ready');
+      if (labelSpanAll) {
+        labelSpanAll.textContent = `Cache All Variants (${uncachedCount} Uncached Q${currentQuality})`;
+      }
+    } else {
+      btnCompressAll.classList.remove('btn-optimize-ready');
+      if (labelSpanAll) {
+        labelSpanAll.textContent = `All Library Variants Cached (Q${currentQuality})`;
+      }
+    }
+  }
+
+  // 3. Per-card optimize buttons in library
+  updateLibraryOptimizeButtons();
 }
 
 async function loadPerformanceSettings() {

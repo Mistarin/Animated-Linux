@@ -193,6 +193,11 @@ fn stop_wallpaper(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_active_wallpaper(state: State<'_, AppState>) -> Option<WallpaperItem> {
+    state.wallpaper_mgr.active_wallpaper.lock().unwrap().clone()
+}
+
+#[tauri::command]
 fn set_playback_state(
     state: State<'_, AppState>,
     is_paused: bool,
@@ -568,6 +573,7 @@ fn main() {
             rename_wallpaper,
             apply_wallpaper,
             stop_wallpaper,
+            get_active_wallpaper,
             set_playback_state,
             get_performance_settings,
             update_performance_settings,

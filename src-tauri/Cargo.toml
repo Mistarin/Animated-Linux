@@ -1,7 +1,9 @@
 [package]
-name = "aetherpaper"
+name = "animated-linux"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Animated wallpaper engine for Linux"
 
 [dependencies]
 tauri = { version = "2.1", features = ["tray-icon"] }

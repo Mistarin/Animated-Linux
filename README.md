@@ -1,86 +1,112 @@
 # Animated Linux
 
-A high-performance, modern animated wallpaper engine for Linux (KDE Plasma 6 on Wayland, universal Wayland compositors, and X11) featuring a clean monochromatic interface, per-wallpaper variant caching, video sizing and pan positioning controls, and granular pause policies.
+<p align="center">
+  <a href="https://github.com/Mistarin/Animated-Linux">
+    <img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Platform Linux" />
+  </a>
+  <a href="https://github.com/Mistarin/Animated-Linux">
+    <img src="https://img.shields.io/badge/Desktop-KDE%20Plasma%206-1D99F3?style=flat-square&logo=kde&logoColor=white" alt="KDE Plasma 6" />
+  </a>
+  <a href="https://github.com/Mistarin/Animated-Linux">
+    <img src="https://img.shields.io/badge/Display-Wayland%20%2F%20X11-2b2b36?style=flat-square" alt="Display Server" />
+  </a>
+  <a href="https://github.com/Mistarin/Animated-Linux/stargazers">
+    <img src="https://img.shields.io/github/stars/Mistarin/Animated-Linux?style=flat-square&logo=github&label=Stars&color=10b981" alt="GitHub Stars" />
+  </a>
+  <a href="https://github.com/Mistarin/Animated-Linux/watchers">
+    <img src="https://img.shields.io/github/watchers/Mistarin/Animated-Linux?style=flat-square&logo=github&label=Favorites&color=6366f1" alt="GitHub Favorites" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg?style=flat-square" alt="License GPL 3.0" />
+  </a>
+  <a href="https://tauri.app">
+    <img src="https://img.shields.io/badge/Built%20with-Rust%20%26%20Tauri-DEA584?style=flat-square&logo=rust" alt="Rust & Tauri" />
+  </a>
+</p>
+
+Animated wallpaper manager for Linux with native KDE Plasma 6 D-Bus containment integration and a universal hardware-accelerated MPV backend. Features per-wallpaper resolution variant caching (Q1–Q5), runtime video pan and sizing controls, and zero idle overhead.
+
+---
+
+## Architecture
+
+- **KDE Plasma 6 Wayland Engine**: Evaluates wallpaper containments via Plasma D-Bus API (`org.kde.PlasmaShell.evaluateScript`). Runs inside the native shell renderer with full desktop icon, widget, and context menu support.
+- **Universal MPV Engine**: Hardware-accelerated background layer runner with IPC controls for Wayland compositors (Hyprland, Sway, GNOME) and X11.
+- **Tauri 2 Core**: Memory footprint under 30MB of RAM compared to Electron-based engines.
 
 ---
 
 ## Features
 
-### Performance & Per-Wallpaper Variant Caching
-- **Quality Scale (Q1 - Q5)**:
-  - **Q5 (Native)**: Untouched original source video preserving native resolution, frame rate, and original bitrate.
-  - **Q4 (4K)**: Ultra high-definition 4K encoding (`3840x2160`) at 60 FPS (`CRF 18`).
-  - **Q3 (2K)**: Quad HD 1440p encoding (`2560x1440`) at 60 FPS (`CRF 21`).
-  - **Q2 (FULLHD)**: Full HD 1080p encoding (`1920x1080`) at 30 FPS (`CRF 24`).
-  - **Q1 (HD or lower)**: Downscaled 720p encoding (`1280x720`) at 24 FPS (`CRF 28`). Minimal GPU load and maximum battery saving.
-- **Variant Caching (1 - 5)**:
-  - Each wallpaper automatically caches its rendered variants (`{id}_q1.mp4` through `{id}_q5.mp4`) in `./wallpapers/`.
-  - When switching the quality slider, if the active wallpaper already has that variant cached, it switches instantly with zero transcode delay.
-  - If the variant is not yet cached, the **"Optimize & Cache"** button turns vibrant green, indicating that clicking it will generate and cache the variant.
-- **Configurable Rendering FPS**:
-  - Limit wallpaper playback to 15 FPS (Battery Saver), 24 FPS (Cinematic), 30 FPS (Smooth / Low GPU), 60 FPS (Fluid), or Native Source.
-- **Granular Pausing Policies**:
-  - Fullscreen Game / App (Performance default)
-  - Maximized Window Active
-  - Any Window Active / Covered
-  - Never Pause (Always Play)
-  - Battery Power (Laptops / Handhelds)
-- **Hardware-Accelerated Decoding**:
-  - Hardware video decoding via VA-API and NVDEC.
+### Quality Scale & Variant Caching
 
-### Video Sizing & Pan Position Controls
-- **Sizing Modes**:
-  - Fill / Zoom (Expand to fill screen while preserving aspect ratio)
-  - Fit Aspect (Fit entire video inside screen boundaries)
-  - Stretch (Stretch video to completely fill screen)
-  - Center (1:1 unscaled centered video)
-- **Pan Offsets (X & Y)**:
-  - Sliders allowing horizontal and vertical repositioning of the video layer with one-click zero reset.
+Wallpapers automatically cache generated variants in `./wallpapers/` (`{id}_q1.mp4` through `{id}_q5.mp4`). Dragging the Quality Slider switches instantly between cached variants with zero transcoding delay. If an active quality level is not yet cached, the UI highlights an action to generate it on demand.
 
-### Wallpaper Management & Persistent Storage
-- **Predictable Local Storage**:
-  - All wallpapers, cached quality variants, thumbnails, and library definitions are organized persistently in `./wallpapers/`.
-- **Inline Double-Click Renaming**:
-  - Double-click any wallpaper title in your library to rename it in place.
-- **Smooth QOL Installation Flow**:
-  - Importing videos displays an immediate blurred preview with a thin white glowing scan line, transitioning smoothly to full clarity upon completion.
-- **Reliable Base64 Previews**:
-  - Base64 data streaming ensures instant, reliable thumbnail rendering across WebKitGTK without protocol or cross-origin restrictions.
+| Profile | Target Resolution | Frame Rate | Codec Preset | Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **Q5 (Native)** | Source Resolution | Native | Pass-through | Untouched source video file |
+| **Q4 (4K)** | 3840x2160 | 60 FPS | libx264 (CRF 18) | High-resolution UHD displays |
+| **Q3 (2K)** | 2560x1440 | 60 FPS | libx264 (CRF 21) | 1440p monitors |
+| **Q2 (FULLHD)** | 1920x1080 | 30 FPS | libx264 (CRF 24) | Standard 1080p desktop |
+| **Q1 (HD)** | 1280x720 or lower | 24 FPS | libx264 (CRF 28) | Battery saver & low-spec GPUs |
 
-### Multi-Backend Architecture
-- **KDE Plasma 6 Wayland Native Engine**:
-  - Evaluates wallpaper containments via Plasma D-Bus API, delivering zero-overhead hardware-accelerated playback with full desktop icon, widget, and right-click menu interaction.
-- **Universal MPV Engine**:
-  - Standalone hardware-accelerated background engine for Hyprland, Sway, GNOME, and X11 environments.
+### Video Sizing & Pan Alignment
+- **Sizing Modes**: `Fill / Zoom` (expand to fill), `Fit Aspect` (letterboxed), `Stretch`, and `Center` (1:1 unscaled).
+- **Pan Offsets**: Real-time horizontal (`X: -50% to +50%`) and vertical (`Y: -50% to +50%`) adjustments with a quick reset button.
+- Updates are applied live via IPC to active backends without restarting playback.
+
+### Configurable Pausing Policies
+- **Fullscreen Game / App**: Automatically detects running 3D games and fullscreen apps via window state monitoring and pauses playback.
+- **Maximized Window Active**: Pauses when any window is maximized.
+- **Any Window Active / Covered**: Pauses when the desktop layer is obscured.
+- **Never Pause**: Continuous playback.
+- **Battery Power**: Pauses when running on battery.
+
+### Storage & Interface
+- **Self-Contained Storage**: All imported videos, converted variants, thumbnails, and `library.json` remain inside the `./wallpapers/` application folder.
+- **Base64 Previews**: Thumbnails streamed as Base64 data URLs to prevent WebKitGTK asset protocol restrictions.
+- **Inline Renaming**: Double-click any wallpaper title to edit in place.
+- **Clean Dark Theme**: High-contrast zinc palette with Inter typography and custom SVG icons.
 
 ---
 
-## Quick Start
+## Dependencies
 
-### Prerequisites
-- Linux with KDE Plasma 6 (Wayland) or any compositor with `mpv`
-- `ffmpeg` and `ffprobe` for video processing and frame extraction
-- Node.js & `pnpm`
-- Rust toolchain (`cargo`)
+- **Linux Kernel** & **systemd**
+- **KDE Plasma 6** (for native Plasma backend) or **mpv** (for universal Wayland/X11 backend)
+- **ffmpeg** & **ffprobe** (for frame extraction and video scaling)
+- **Node.js** >= 18 & **pnpm**
+- **Rust** >= 1.75
 
-### Launching the Application
-All lifecycle management scripts are located in `./setup/`:
+---
 
+## Building & Installation
+
+### 1. Clone Repository
 ```bash
-# Launch release binary:
-./setup/launch.sh
+git clone https://github.com/Mistarin/Animated-Linux.git
+cd Animated-Linux
+```
 
-# Or launch in Live Development mode with Hot Module Replacement:
+### 2. Install Dependencies
+```bash
+pnpm install
+```
+
+### 3. Run Development Mode
+```bash
 ./setup/launch.sh --dev
 ```
 
-### Building Distribution Packages
+### 4. Build Release Binary
 ```bash
-# Build native binary into dist/:
-./setup/build_image.sh
+./setup/build_image.sh --binary-only
+```
+The optimized executable will be located at `dist/aetherpaper-x86_64`.
 
-# Build container image:
-./setup/build_image.sh --docker
+### 5. Launch Release
+```bash
+./setup/launch.sh
 ```
 
 ---
@@ -88,28 +114,31 @@ All lifecycle management scripts are located in `./setup/`:
 ## Project Structure
 
 ```
-AnimatedWallpaper/
-├── src-tauri/                 # Rust backend and system integrations
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
+Animated-Linux/
+├── src-tauri/                 # Rust core & backend bridges
+│   ├── Cargo.toml             # Rust package configuration
+│   ├── tauri.conf.json        # Tauri window & bundle settings
 │   └── src/
-│       ├── main.rs            # Application entrypoint & IPC commands
-│       ├── wallpaper/         # KDE Plasma 6 D-Bus & MPV engines
-│       ├── monitors/          # Multi-screen detection
+│       ├── main.rs            # IPC command dispatch & detector loop
+│       ├── wallpaper/         # Plasma 6 D-Bus & MPV engines
+│       ├── monitors/          # Display detection
 │       ├── performance/       # Fullscreen game detector
 │       └── tray/              # System tray daemon
-├── src/                       # Frontend application (Clean Grey theme)
-│   ├── main.js                # Core UI logic, state, and IPC dispatch
-│   ├── icons.js               # Featherweight custom SVG icon suite
+├── src/                       # Frontend application
+│   ├── main.js                # UI state & IPC handlers
+│   ├── icons.js               # SVG icon set
 │   └── styles/
-│       └── theme.css          # Monochromatic theme & animations
-├── setup/                     # Lifecycle scripts (launch, build)
-├── wallpapers/                # Persistent application wallpaper storage
-│   └── thumbnails/            # Generated thumbnail cache
-└── assets/sample_wallpapers/  # Bundled sample looping videos
+│       └── theme.css          # Dark zinc stylesheet
+├── setup/                     # Build & launch scripts
+│   ├── launch.sh              # Production / dev launcher
+│   └── build_image.sh         # Binary & container builder
+├── wallpapers/                # Local persistent wallpaper storage
+│   └── thumbnails/            # Thumbnail cache
+└── assets/sample_wallpapers/  # Bundled sample loops
 ```
 
 ---
 
 ## License
-MIT
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).

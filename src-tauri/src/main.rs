@@ -15,10 +15,10 @@ use std::sync::Arc;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-struct AppState {
-    wallpaper_mgr: Arc<WallpaperManager>,
-    steam_mgr: Arc<SteamManager>,
-    workshop_mgr: WorkshopManager,
+pub struct AppState {
+    pub wallpaper_mgr: Arc<WallpaperManager>,
+    pub steam_mgr: Arc<SteamManager>,
+    pub workshop_mgr: WorkshopManager,
 }
 
 #[tauri::command]
@@ -475,6 +475,33 @@ fn get_video_duration(path: &Path) -> Option<f64> {
     None
 }
 
+#[tauri::command]
+fn minimize_window(window: tauri::WebviewWindow) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+fn toggle_maximize_window(window: tauri::WebviewWindow) {
+    if let Ok(is_maximized) = window.is_maximized() {
+        if is_maximized {
+            let _ = window.unmaximize();
+        } else {
+            let _ = window.maximize();
+        }
+    }
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle, state: State<'_, AppState>) {
+    let _ = state.wallpaper_mgr.stop();
+    app.exit(0);
+}
+
 fn main() {
     let steam_mgr = SteamManager::new(480);
     let wallpaper_mgr = Arc::new(WallpaperManager::new());
@@ -487,6 +514,13 @@ fn main() {
     };
 
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                use tauri::Emitter;
+                let _ = window.emit("window-close-requested", ());
+            }
+        })
         .setup(move |app| {
             if let Err(e) = tray::setup_tray(app.handle()) {
                 eprintln!("[Tray] Warning: could not initialize system tray: {}", e);
@@ -537,7 +571,11 @@ fn main() {
             get_monitors,
             get_steam_status,
             get_workshop_items,
-            add_to_steam_client
+            add_to_steam_client,
+            minimize_window,
+            toggle_maximize_window,
+            hide_window,
+            exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherPaper tauri application");

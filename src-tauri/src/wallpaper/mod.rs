@@ -129,6 +129,10 @@ impl WallpaperManager {
         }
     }
 
+    pub fn is_paused(&self) -> bool {
+        self.current_settings.lock().unwrap().is_paused
+    }
+
     pub fn set_volume(&self, volume: u32, muted: bool) -> Result<(), String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.volume = volume;

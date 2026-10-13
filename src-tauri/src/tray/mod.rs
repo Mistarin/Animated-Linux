@@ -3,27 +3,44 @@ use tauri::{
     tray::{TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
+use crate::AppState;
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let play_pause_item = MenuItem::with_id(app, "toggle_pause", "Pause / Resume", true, None::<&str>)?;
-    let mute_item = MenuItem::with_id(app, "toggle_mute", "Mute / Unmute", true, None::<&str>)?;
-    let open_item = MenuItem::with_id(app, "open_window", "Open AetherPaper", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(app, "open_window", "Open Animated Linux", true, None::<&str>)?;
+    let play_pause_item = MenuItem::with_id(app, "toggle_pause", "Pause / Resume Wallpaper", true, None::<&str>)?;
+    let stop_item = MenuItem::with_id(app, "stop_wallpaper", "Stop Wallpaper", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit Animated Linux", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open_item, &play_pause_item, &mute_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&open_item, &play_pause_item, &stop_item, &quit_item])?;
 
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
+        .tooltip("Animated Linux")
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
             match event.id.as_ref() {
                 "open_window" => {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
+                        let _ = window.unminimize();
                         let _ = window.set_focus();
                     }
                 }
+                "toggle_pause" => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        let is_paused = state.wallpaper_mgr.is_paused();
+                        let _ = state.wallpaper_mgr.set_paused(!is_paused);
+                    }
+                }
+                "stop_wallpaper" => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        let _ = state.wallpaper_mgr.stop();
+                    }
+                }
                 "quit" => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        let _ = state.wallpaper_mgr.stop();
+                    }
                     app.exit(0);
                 }
                 _ => {}
@@ -33,8 +50,14 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                    let is_visible = window.is_visible().unwrap_or(false);
+                    if is_visible {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
                 }
             }
         })

@@ -23,6 +23,18 @@
           <span id="icon-import-slot"></span>
           <span>Import Video</span>
         </button>
+
+        <div class="window-controls">
+          <button class="win-btn win-btn-minimize" id="btn-win-minimize" title="Minimize Window">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+          </button>
+          <button class="win-btn win-btn-maximize" id="btn-win-maximize" title="Maximize / Restore">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+          </button>
+          <button class="win-btn win-btn-close" id="btn-win-close" title="Close / Minimize Options">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -166,6 +178,27 @@
               <option value="mpv">MPV Hardware-Accelerated Engine</option>
             </select>
           </div>
+
+          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
+
+          <!-- Window Close & Minimize Behavior -->
+          <div>
+            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Window Close & Minimize Behavior</h3>
+            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
+              Choose whether closing the window prompts for action, minimizes to system tray, or terminates playback.
+            </p>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <select id="setting-close-behavior" style="width: 320px;">
+                <option value="ask" selected>Ask every time (Show Controls Dialog)</option>
+                <option value="tray">Minimize to System Tray (Keep wallpaper running)</option>
+                <option value="minimize">Minimize to Taskbar</option>
+                <option value="quit">Quit Application completely</option>
+              </select>
+              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to asking every time" style="font-size: 0.8rem; padding: 6px 12px;">
+                Reset Prompt
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </main>
@@ -235,6 +268,72 @@
         </div>
       </div>
     </footer>
+
+    <!-- Close / Minimize Controls Dialog Modal -->
+    <div class="modal-overlay hidden" id="modal-close-controls">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-close-title">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-header-icon" id="modal-close-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </div>
+            <div>
+              <h3 class="modal-title" id="modal-close-title">Close Animated Linux</h3>
+              <p class="modal-subtitle">Choose how to handle Animated Linux and active wallpaper playback.</p>
+            </div>
+          </div>
+          <button class="btn btn-icon modal-btn-close" id="btn-close-dialog-cancel" title="Dismiss">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <div class="modal-options-list">
+          <!-- Option 1: Minimize to System Tray -->
+          <button class="modal-option-card recommended" id="btn-opt-tray">
+            <div class="modal-option-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polygon points="10 8 15 10 10 12" fill="currentColor"/></svg>
+            </div>
+            <div class="modal-option-text">
+              <div class="modal-option-title">
+                <span>Minimize to System Tray</span>
+                <span class="badge-recommended">Recommended</span>
+              </div>
+              <p class="modal-option-desc">Active animated wallpaper continues playing smoothly on your desktop. Animated Linux stays accessible anytime from your system tray icon.</p>
+            </div>
+          </button>
+
+          <!-- Option 2: Minimize to Taskbar -->
+          <button class="modal-option-card" id="btn-opt-minimize">
+            <div class="modal-option-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <div class="modal-option-text">
+              <div class="modal-option-title">Minimize to Taskbar</div>
+              <p class="modal-option-desc">Minimizes the window to your system taskbar without hiding into the tray.</p>
+            </div>
+          </button>
+
+          <!-- Option 3: Quit Completely -->
+          <button class="modal-option-card danger" id="btn-opt-quit">
+            <div class="modal-option-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            </div>
+            <div class="modal-option-text">
+              <div class="modal-option-title">Quit Application</div>
+              <p class="modal-option-desc">Stops wallpaper playback completely and terminates all Animated Linux processes.</p>
+            </div>
+          </button>
+        </div>
+
+        <div class="modal-footer">
+          <label class="modal-checkbox-label">
+            <input type="checkbox" id="chk-remember-close-action" class="modal-checkbox" />
+            <span>Remember my choice (can be changed in Settings)</span>
+          </label>
+          <button class="btn btn-secondary" id="btn-dialog-cancel-footer">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

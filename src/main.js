@@ -87,6 +87,22 @@ const settingBackend = document.getElementById('setting-backend');
 const btnImport = document.getElementById('btn-import');
 const dropzone = document.getElementById('dropzone');
 
+// Window Controls & Close Dialog Elements
+const btnWinMinimize = document.getElementById('btn-win-minimize');
+const btnWinMaximize = document.getElementById('btn-win-maximize');
+const btnWinClose = document.getElementById('btn-win-close');
+
+const modalCloseControls = document.getElementById('modal-close-controls');
+const btnCloseDialogCancel = document.getElementById('btn-close-dialog-cancel');
+const btnDialogCancelFooter = document.getElementById('btn-dialog-cancel-footer');
+const btnOptTray = document.getElementById('btn-opt-tray');
+const btnOptMinimize = document.getElementById('btn-opt-minimize');
+const btnOptQuit = document.getElementById('btn-opt-quit');
+const chkRememberCloseAction = document.getElementById('chk-remember-close-action');
+
+const settingCloseBehavior = document.getElementById('setting-close-behavior');
+const btnResetClosePref = document.getElementById('btn-reset-close-pref');
+
 // Helper to convert or extract thumbnail URL (prioritizes base64 data for WebKitGTK)
 function getThumbnail(wp) {
   if (!wp) return '/src-tauri/icons/icon.png';
@@ -138,6 +154,7 @@ async function init() {
   setupGeometryControls();
   setupPerformanceControls();
   setupImportAndDrop();
+  setupWindowControls();
 
   await refreshDisplays();
   await loadPerformanceSettings();
@@ -823,6 +840,144 @@ function setupImportAndDrop() {
 
   dropzone.addEventListener('dragleave', () => {
     dropzone.classList.remove('dragleave');
+  });
+}
+
+// Window Controls & Exit Modal Logic
+function setupWindowControls() {
+  const getCloseBehavior = () => localStorage.getItem('close_behavior') || 'ask';
+
+  const updateSettingDropdown = () => {
+    if (settingCloseBehavior) {
+      settingCloseBehavior.value = getCloseBehavior();
+    }
+  };
+
+  updateSettingDropdown();
+
+  // Settings dropdown change
+  if (settingCloseBehavior) {
+    settingCloseBehavior.addEventListener('change', (e) => {
+      localStorage.setItem('close_behavior', e.target.value);
+    });
+  }
+
+  // Reset prompt button
+  if (btnResetClosePref) {
+    btnResetClosePref.addEventListener('click', () => {
+      localStorage.setItem('close_behavior', 'ask');
+      updateSettingDropdown();
+    });
+  }
+
+  // Header window buttons
+  if (btnWinMinimize) {
+    btnWinMinimize.addEventListener('click', async () => {
+      try {
+        await invoke('minimize_window');
+      } catch (err) {
+        console.error('Failed to minimize window:', err);
+      }
+    });
+  }
+
+  if (btnWinMaximize) {
+    btnWinMaximize.addEventListener('click', async () => {
+      try {
+        await invoke('toggle_maximize_window');
+      } catch (err) {
+        console.error('Failed to toggle maximize:', err);
+      }
+    });
+  }
+
+  const showCloseDialog = () => {
+    if (chkRememberCloseAction) chkRememberCloseAction.checked = false;
+    modalCloseControls.classList.remove('hidden');
+  };
+
+  const hideCloseDialog = () => {
+    modalCloseControls.classList.add('hidden');
+  };
+
+  const executeCloseAction = async (action) => {
+    if (chkRememberCloseAction && chkRememberCloseAction.checked) {
+      localStorage.setItem('close_behavior', action);
+      updateSettingDropdown();
+    }
+    hideCloseDialog();
+
+    try {
+      if (action === 'tray') {
+        await invoke('hide_window');
+      } else if (action === 'minimize') {
+        await invoke('minimize_window');
+      } else if (action === 'quit') {
+        await invoke('exit_app');
+      }
+    } catch (err) {
+      console.error(`Failed to execute close action ${action}:`, err);
+    }
+  };
+
+  const triggerCloseFlow = () => {
+    const pref = getCloseBehavior();
+    if (pref === 'tray') {
+      invoke('hide_window').catch(console.error);
+    } else if (pref === 'minimize') {
+      invoke('minimize_window').catch(console.error);
+    } else if (pref === 'quit') {
+      invoke('exit_app').catch(console.error);
+    } else {
+      showCloseDialog();
+    }
+  };
+
+  if (btnWinClose) {
+    btnWinClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerCloseFlow();
+    });
+  }
+
+  // Listen for native close requests emitted from Tauri backend
+  listen('window-close-requested', () => {
+    triggerCloseFlow();
+  });
+
+  // Dialog option buttons
+  if (btnOptTray) {
+    btnOptTray.addEventListener('click', () => executeCloseAction('tray'));
+  }
+
+  if (btnOptMinimize) {
+    btnOptMinimize.addEventListener('click', () => executeCloseAction('minimize'));
+  }
+
+  if (btnOptQuit) {
+    btnOptQuit.addEventListener('click', () => executeCloseAction('quit'));
+  }
+
+  // Dialog cancel/dismiss buttons
+  if (btnCloseDialogCancel) {
+    btnCloseDialogCancel.addEventListener('click', hideCloseDialog);
+  }
+
+  if (btnDialogCancelFooter) {
+    btnDialogCancelFooter.addEventListener('click', hideCloseDialog);
+  }
+
+  modalCloseControls.addEventListener('click', (e) => {
+    if (e.target === modalCloseControls) {
+      hideCloseDialog();
+    }
+  });
+
+  // Escape key closes modal
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modalCloseControls.classList.contains('hidden')) {
+      hideCloseDialog();
+    }
   });
 }
 

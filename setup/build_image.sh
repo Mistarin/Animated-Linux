@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "================================================================"
-echo "          Building AetherPaper Image & Distribution Packages     "
+echo "          Building Animated Linux Image & Distribution Packages  "
 echo "================================================================"
 
 MODE="all"
@@ -25,15 +25,15 @@ build_native_binary() {
     cd "$ROOT_DIR"
     pnpm tauri build --no-bundle
     
-    cp "$ROOT_DIR/src-tauri/target/release/aetherpaper" "$ROOT_DIR/dist/aetherpaper-x86_64"
+    cp "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64"
     
-    # Ensure libsteam_api.so is located alongside binaries
-    STEAM_SO="$(find "$ROOT_DIR/src-tauri/target" -name "libsteam_api.so" 2>/dev/null | head -n 1)"
+    # Ensure libsteam_api.so is located alongside binaries if present
+    STEAM_SO="$(find "$ROOT_DIR/src-tauri/target" -name "libsteam_api.so" 2>/dev/null | head -n 1 || true)"
     if [ -n "$STEAM_SO" ]; then
-        cp -u "$STEAM_SO" "$ROOT_DIR/src-tauri/target/release/"
-        cp -u "$STEAM_SO" "$ROOT_DIR/dist/"
+        cp -u "$STEAM_SO" "$ROOT_DIR/src-tauri/target/release/" 2>/dev/null || true
+        cp -u "$STEAM_SO" "$ROOT_DIR/dist/" 2>/dev/null || true
     fi
-    echo "[OK] Binary built: dist/aetherpaper-x86_64 (with libsteam_api.so)"
+    echo "[OK] Binary built: dist/animated-linux-x86_64"
 }
 
 build_tauri_bundle() {
@@ -58,9 +58,9 @@ build_container_image() {
     fi
 
     if [ -n "$CONTAINER_TOOL" ]; then
-        echo "Using $CONTAINER_TOOL to build aetherpaper:latest..."
-        "$CONTAINER_TOOL" build -t aetherpaper:latest -f "$ROOT_DIR/setup/Dockerfile" "$ROOT_DIR"
-        echo "[OK] Container image built successfully: aetherpaper:latest"
+        echo "Using $CONTAINER_TOOL to build animated-linux:latest..."
+        "$CONTAINER_TOOL" build -t animated-linux:latest -f "$ROOT_DIR/setup/Dockerfile" "$ROOT_DIR"
+        echo "[OK] Container image built successfully: animated-linux:latest"
     else
         echo "[Notice] Neither docker nor podman found. Skipping container image build."
     fi

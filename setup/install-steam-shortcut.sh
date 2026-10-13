@@ -5,13 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "================================================================"
-echo "          Installing AetherPaper to Steam Library Shortcuts      "
+echo "          Installing Animated Linux to Steam Library Shortcuts   "
 echo "================================================================"
 
 # Use release binary if built, otherwise debug
-EXE="$ROOT_DIR/src-tauri/target/release/aetherpaper"
+EXE="$ROOT_DIR/src-tauri/target/release/animated-linux"
 if [ ! -f "$EXE" ]; then
-    EXE="$ROOT_DIR/src-tauri/target/debug/aetherpaper"
+    EXE="$ROOT_DIR/src-tauri/target/debug/animated-linux"
 fi
 
 if [ ! -f "$EXE" ]; then
@@ -25,7 +25,7 @@ import os, glob, shutil
 
 app_dir = "$ROOT_DIR"
 exe_path = "$EXE"
-app_name = "AetherPaper"
+app_name = "Animated Linux"
 
 def compute_shortcut_id(exe, name):
     key = f"{exe}{name}".encode('utf-8')

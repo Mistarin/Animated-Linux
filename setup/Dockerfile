@@ -38,5 +38,5 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=app-builder /app/src-tauri/target/release/aetherpaper /usr/local/bin/aetherpaper
-CMD ["/usr/local/bin/aetherpaper"]
+COPY --from=app-builder /app/src-tauri/target/release/animated-linux /usr/local/bin/animated-linux
+CMD ["/usr/local/bin/animated-linux"]

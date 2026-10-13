@@ -8,10 +8,10 @@ Utility scripts for building, packaging, containerizing, and launching Animated 
 
 | Script | Description | Usage |
 | :--- | :--- | :--- |
-| `launch.sh` | Launches AetherPaper (uses release binary if available, or `--dev` for live development). | `./setup/launch.sh` or `./setup/launch.sh --dev` |
+| `launch.sh` | Launches Animated Linux (uses release binary if available, or `--dev` for live development). | `./setup/launch.sh` or `./setup/launch.sh --dev` |
 | `build_image.sh` | Compiles web assets & Rust binary, creates distribution artifacts, and optionally builds container images. | `./setup/build_image.sh` |
-| `install-steam-shortcut.sh` | Registers AetherPaper into local Steam user libraries with custom banners, capsules, and logos. | `./setup/install-steam-shortcut.sh` |
-| `Dockerfile` | Multi-stage container recipe for building and running AetherPaper in a reproducible Linux environment. | `docker build -f setup/Dockerfile -t aetherpaper:latest .` |
+| `install-steam-shortcut.sh` | Registers Animated Linux into local Steam user libraries with custom banners, capsules, and logos. | `./setup/install-steam-shortcut.sh` |
+| `Dockerfile` | Multi-stage container recipe for building and running Animated Linux in a reproducible Linux environment. | `docker build -f setup/Dockerfile -t animated-linux:latest .` |
 
 ---
 
@@ -39,4 +39,4 @@ Utility scripts for building, packaging, containerizing, and launching Animated 
 ```bash
 ./setup/install-steam-shortcut.sh
 ```
-Restart Steam to see AetherPaper in your Steam Library.
+Restart Steam to see Animated Linux in your Steam Library.

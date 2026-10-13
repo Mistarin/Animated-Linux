@@ -1,5 +1,7 @@
-// Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod wallpaper;
 mod steam;
@@ -391,23 +393,50 @@ fn compress_wallpaper(
             }
         };
 
-        let vf = format!("scale=-2:{},fps={}", max_height, fps);
         let temp_output = wallpapers_dir.join(format!("{}_temp_q{}.mp4", id, quality_level));
+        let render_node = std::path::Path::new("/dev/dri/renderD128");
 
-        let status = Command::new("ffmpeg")
-            .arg("-y")
-            .arg("-i").arg(&input_source)
-            .arg("-vf").arg(&vf)
-            .arg("-c:v").arg("libx264")
-            .arg("-preset").arg("veryfast")
-            .arg("-crf").arg(crf)
-            .arg("-an")
-            .arg(&temp_output)
-            .status()
-            .map_err(|e| format!("Failed to invoke ffmpeg: {}", e))?;
+        let mut success = false;
 
-        if !status.success() {
-            return Err("ffmpeg failed to compress video".to_string());
+        // Fast Hardware Accelerated Encoding via VA-API (Intel/AMD)
+        if render_node.exists() {
+            let vaapi_vf = format!("fps={},format=nv12,hwupload,scale_vaapi=w=-2:h={}", fps, max_height);
+            let status = Command::new("ffmpeg")
+                .arg("-y")
+                .arg("-vaapi_device").arg("/dev/dri/renderD128")
+                .arg("-i").arg(&input_source)
+                .arg("-vf").arg(&vaapi_vf)
+                .arg("-c:v").arg("h264_vaapi")
+                .arg("-qp").arg(crf)
+                .arg("-an")
+                .arg(&temp_output)
+                .status();
+
+            if let Ok(st) = status {
+                if st.success() {
+                    success = true;
+                }
+            }
+        }
+
+        // CPU Fallback via libx264
+        if !success {
+            let vf = format!("scale=-2:{},fps={}", max_height, fps);
+            let status = Command::new("ffmpeg")
+                .arg("-y")
+                .arg("-i").arg(&input_source)
+                .arg("-vf").arg(&vf)
+                .arg("-c:v").arg("libx264")
+                .arg("-preset").arg("veryfast")
+                .arg("-crf").arg(crf)
+                .arg("-an")
+                .arg(&temp_output)
+                .status()
+                .map_err(|e| format!("Failed to invoke ffmpeg: {}", e))?;
+
+            if !status.success() {
+                return Err("ffmpeg failed to compress video".to_string());
+            }
         }
 
         let _ = std::fs::rename(&temp_output, &target_variant_path);

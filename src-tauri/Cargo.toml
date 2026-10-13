@@ -14,6 +14,7 @@ walkdir = "2.5"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "process"] }
 base64 = "0.22"
 steamworks = { version = "0.13.1", optional = true }
+mimalloc = "0.1.52"
 
 [features]
 default = []
@@ -21,3 +22,10 @@ steam = ["dep:steamworks"]
 
 [build-dependencies]
 tauri-build = { version = "2.1", features = [] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

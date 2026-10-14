@@ -38,31 +38,41 @@ if [ "$USE_DEV" -eq 1 ]; then
     exec pnpm tauri dev
 fi
 
-# 2. Check if binary is missing or source code is newer than existing binary
+# 2. Check if binary is missing or source code has changed
 NEED_BUILD=0
-if [ ! -f "$RELEASE_BIN" ] || [ "$FORCE_BUILD" -eq 1 ]; then
-    NEED_BUILD=1
-else
-    # Find any modified source file newer than the release binary
-    NEWER_SRC="$(find "$ROOT_DIR/src" "$ROOT_DIR/src-tauri/src" "$ROOT_DIR/index.html" "$ROOT_DIR/src-tauri/tauri.conf.json" -type f -newer "$RELEASE_BIN" 2>/dev/null | head -n 1 || true)"
-    if [ -n "$NEWER_SRC" ]; then
-        echo "[Launcher] Source changes detected newer than binary ($NEWER_SRC)."
-        echo "[Launcher] Auto-rebuilding fresh binary to ensure changes take effect..."
-        NEED_BUILD=1
+HASH_FILE="$ROOT_DIR/.last_build_hash"
+
+compute_source_hash() {
+    if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        (git rev-parse HEAD 2>/dev/null && git status --porcelain 2>/dev/null) | sha256sum | awk '{print $1}'
+    else
+        find "$ROOT_DIR/src" "$ROOT_DIR/src-tauri/src" "$ROOT_DIR/src-tauri/tauri.conf.json" "$ROOT_DIR/index.html" -type f -exec sha256sum {} + 2>/dev/null | sort | sha256sum | awk '{print $1}'
     fi
+}
+
+CURRENT_HASH="$(compute_source_hash)"
+
+if [ ! -f "$RELEASE_BIN" ] || [ ! -f "$ROOT_DIR/dist/animated-linux-x86_64" ] || [ "$FORCE_BUILD" -eq 1 ]; then
+    NEED_BUILD=1
+elif [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE" 2>/dev/null)" != "$CURRENT_HASH" ]; then
+    echo "[Launcher] Source changes detected. Rebuilding production release binary..."
+    NEED_BUILD=1
 fi
 
 if [ "$NEED_BUILD" -eq 1 ]; then
     bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+    echo "$CURRENT_HASH" > "$HASH_FILE"
 fi
 
 # 3. Launch release binary
-if [ -f "$RELEASE_BIN" ]; then
+TARGET_BIN="$ROOT_DIR/dist/animated-linux-x86_64"
+if [ ! -f "$TARGET_BIN" ]; then
+    TARGET_BIN="$RELEASE_BIN"
+fi
+
+if [ -f "$TARGET_BIN" ]; then
     echo "[Launcher] Starting optimized production release binary ($APP_BIN)..."
-    exec "$RELEASE_BIN" "$@"
-elif [ -f "$ROOT_DIR/dist/animated-linux-x86_64" ]; then
-    echo "[Launcher] Starting standalone release binary from dist..."
-    exec "$ROOT_DIR/dist/animated-linux-x86_64" "$@"
+    exec "$TARGET_BIN" "$@"
 else
     echo "[Error] Failed to build or find release binary."
     exit 1

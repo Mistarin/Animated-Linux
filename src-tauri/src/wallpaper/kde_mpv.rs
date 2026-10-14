@@ -71,16 +71,12 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
             2 => 1, // Crop / Zoom fill
             _ => 1,
         };
-        let pause_mode = if !settings.pause_on_fullscreen || settings.pause_policy == 0 {
-            0 // Never pause
-        } else if settings.pause_policy == 1 {
-            5 // FullScreen
-        } else if settings.pause_policy == 2 {
-            2 // Max
-        } else if settings.pause_policy == 3 {
-            3 // Focus
-        } else {
-            0
+        let pause_mode = match settings.pause_policy {
+            0 => 0, // Never pause
+            1 => 5, // FullScreen
+            2 => 2, // Max
+            3 => 3, // Focus (Pause when any visible window is active)
+            _ => 0,
         };
         let is_muted = settings.is_muted;
         let volume = settings.volume;

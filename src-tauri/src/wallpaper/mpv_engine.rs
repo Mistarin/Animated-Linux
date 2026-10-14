@@ -100,12 +100,10 @@ impl WallpaperBackend for MpvBackend {
             cmd.arg("-l").arg("bottom");
 
             // Automatic pause policies for Wayland compositors
-            if settings.pause_on_fullscreen {
-                match settings.pause_policy {
-                    1 => { cmd.arg("-p").arg("-a").arg("FULL"); }
-                    2 => { cmd.arg("-p").arg("-a").arg("MAX"); }
-                    _ => {}
-                }
+            match settings.pause_policy {
+                1 => { cmd.arg("-p").arg("-a").arg("FULL"); }
+                2 | 3 => { cmd.arg("-p").arg("-a").arg("MAX"); }
+                _ => {}
             }
 
             // Build space-separated MPV options for mpvpaper -o

@@ -930,7 +930,7 @@ async function syncPerformanceSettings() {
     await invoke('update_performance_settings', {
       qualityLevel: currentQuality,
       targetFps: currentFps,
-      pauseOnFullscreen: currentPausePolicy === 1,
+      pauseOnFullscreen: currentPausePolicy !== 0,
       pausePolicy: currentPausePolicy,
       hardwareAccel: chkHardwareAccel.checked,
     });

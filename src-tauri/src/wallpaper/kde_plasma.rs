@@ -53,7 +53,13 @@ impl WallpaperBackend for KdePlasmaBackend {
 
         let target_screen = screen.unwrap_or(-1);
         let fill_mode = settings.fill_mode;
-        let pause_mode = if settings.pause_on_fullscreen { 0 } else { 3 };
+        let pause_mode = if !settings.pause_on_fullscreen || settings.pause_policy == 0 {
+            3 // Never pause: continuous playback regardless of maximized windows
+        } else if settings.pause_policy == 3 {
+            1 // When active window is present
+        } else {
+            0 // Maximized or full-screen
+        };
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
@@ -86,7 +92,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
         d.writeConfig("VideoUrls", JSON.stringify(videoConfig));
         d.writeConfig("LastVideo", videoUrl);
-        d.writeConfig("ResumeLastVideo", true);
+        d.writeConfig("ResumeLastVideo", false);
+        d.writeConfig("LastVideoPosition", 0);
         d.writeConfig("PlaybackRate", {speed_val});
         d.writeConfig("FillMode", {fill_mode});
         d.writeConfig("PauseMode", {pause_mode});

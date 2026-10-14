@@ -117,48 +117,101 @@
           <h2 class="section-title">Application Settings</h2>
         </div>
 
-        <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 22px; max-width: 680px; display: flex; flex-direction: column; gap: 20px;">
-          <div>
-            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Performance & Variant Compression</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 14px;">
-              Tune wallpaper quality levels. Each wallpaper automatically caches variants for instantaneous switching and minimal system overhead.
-            </p>
+        <div class="settings-grid">
+          <!-- Left Column: Engine & Playback Dynamics -->
+          <div class="settings-column">
+            <div class="settings-column-header">
+              <span id="icon-col-engine"></span>
+              <span>Engine & Playback Dynamics</span>
+            </div>
 
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-              <!-- Quality Slider (1 to 5) -->
+            <!-- Card 1: Wallpaper Engine Backend -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <h3 class="settings-card-title">Wallpaper Engine Backend</h3>
+                  <span class="settings-badge settings-badge-active" id="badge-backend-status">
+                    <span class="settings-badge-dot"></span>
+                    <span id="label-active-backend">KDE Plasma 6 (MPV Native)</span>
+                  </span>
+                </div>
+                <p class="settings-card-desc">
+                  Select the rendering engine pipeline. MPV native renders inside PlasmaShell under desktop icons; standalone mpvpaper creates a direct Wayland layer-shell surface.
+                </p>
+              </div>
+
               <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                  <label style="font-size: 0.82rem; color: var(--text-secondary);">Active Profile Level (Q1 - Q5):</label>
-                  <span id="setting-quality-title" style="font-size: 0.82rem; font-weight: 500; color: var(--text-main);">Q5: Native (Source Resolution)</span>
-                </div>
-                <input type="range" id="setting-quality-slider" min="1" max="5" value="5" step="1" style="width: 100%;" />
-                <div id="setting-quality-desc" style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
-                  Untouched source video preserving native frame rate, resolution, and original bitrate.
-                </div>
-              </div>
-
-              <!-- FPS Setting -->
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div style="font-size: 0.82rem; color: var(--text-secondary);">Target Rendering FPS:</div>
-                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Limits playback refresh rate to eliminate wasted GPU draw cycles</div>
-                </div>
-                <select id="setting-fps-select" style="width: 200px;">
-                  <option value="15">15 FPS (Battery Saver)</option>
-                  <option value="24">24 FPS (Cinematic 24p)</option>
-                  <option value="30" selected>30 FPS (Smooth / Low GPU)</option>
-                  <option value="60">60 FPS (Fluid 60Hz)</option>
-                  <option value="0">Source / Native Rate</option>
+                <select id="setting-backend" style="width: 100%;">
+                  <option value="kde_mpv">KDE Plasma 6 (MPV Native - Desktop icons visible)</option>
+                  <option value="kde">KDE Plasma 6 (QtMultimedia - Desktop icons visible)</option>
+                  <option value="mpv">Standalone MPV Engine (mpvpaper - Wayland layer surface)</option>
                 </select>
+                <p id="desc-backend-mode" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 8px; line-height: 1.45;">
+                  KDE Plasma MPV embeds libmpv directly inside PlasmaShell underneath desktop icons with full hardware acceleration.
+                </p>
+              </div>
+            </div>
+
+            <!-- Card 2: Performance & Resolution Profiles -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3 class="settings-card-title">Performance & Resolution Profiles</h3>
+                <p class="settings-card-desc">
+                  Tune wallpaper encoding resolution, rendering refresh rates, and GPU compute overhead.
+                </p>
               </div>
 
-              <!-- Granular Pause Policy -->
-              <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Quality Slider -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="font-size: 0.82rem; color: var(--text-secondary);">Active Profile Level (Q1 - Q5):</label>
+                    <span id="setting-quality-title" style="font-size: 0.82rem; font-weight: 500; color: var(--text-main);">Q5: Native (Source Resolution)</span>
+                  </div>
+                  <input type="range" id="setting-quality-slider" min="1" max="5" value="5" step="1" style="width: 100%;" />
+                  <div id="setting-quality-desc" style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                    Untouched source video preserving native frame rate, resolution, and original bitrate.
+                  </div>
+                </div>
+
+                <!-- FPS Setting -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div>
+                    <div style="font-size: 0.82rem; color: var(--text-secondary);">Target Rendering FPS:</div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Limits playback refresh rate to eliminate wasted GPU draw cycles</div>
+                  </div>
+                  <select id="setting-fps-select" style="min-width: 170px;">
+                    <option value="15">15 FPS (Battery Saver)</option>
+                    <option value="24">24 FPS (Cinematic 24p)</option>
+                    <option value="30" selected>30 FPS (Smooth / Low GPU)</option>
+                    <option value="60">60 FPS (Fluid 60Hz)</option>
+                    <option value="0">Source / Native Rate</option>
+                  </select>
+                </div>
+
+                <!-- Hardware Accel -->
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="chk-hardware-accel" style="width: 16px; height: 16px; accent-color: #10b981; cursor: pointer;" checked />
+                  <span style="font-size: 0.82rem; color: var(--text-secondary);">Enable GPU hardware decoding (VA-API / NVDEC)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Card 3: Pausing & Power Triggers -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3 class="settings-card-title">Pausing & Power Triggers</h3>
+                <p class="settings-card-desc">
+                  Control when animated wallpapers automatically pause playback to preserve battery and gaming frames.
+                </p>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <div>
                   <div style="font-size: 0.82rem; color: var(--text-secondary);">Pausing Trigger Policy:</div>
-                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Control when the animated wallpaper automatically pauses</div>
+                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Monitors focused Wayland surfaces and active window states</div>
                 </div>
-                <select id="setting-pause-policy" style="width: 200px;">
+                <select id="setting-pause-policy" style="min-width: 170px;">
                   <option value="1" selected>Fullscreen Game / App</option>
                   <option value="2">Maximized Window Active</option>
                   <option value="3">Any Window Active / Covered</option>
@@ -166,105 +219,148 @@
                   <option value="4">Battery Power (Laptops)</option>
                 </select>
               </div>
+            </div>
 
-              <!-- Optimization Actions -->
-              <div style="display: flex; gap: 10px; margin-top: 4px;">
-                <button class="btn btn-primary" id="btn-compress-active">
+            <!-- Card 4: Variant Optimization Actions -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3 class="settings-card-title">Variant Optimization Actions</h3>
+                <p class="settings-card-desc">
+                  Pre-encode videos into optimized resolution variants (Q1-Q4) for instantaneous zero-wait switching.
+                </p>
+              </div>
+
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn btn-primary" id="btn-compress-active" style="flex: 1; min-width: 180px;">
                   <span id="icon-compress-active-slot"></span>
                   <span>Optimize / Cache Current Variant</span>
                 </button>
-                <button class="btn btn-secondary" id="btn-compress-all">
+                <button class="btn btn-secondary" id="btn-compress-all" style="flex: 1; min-width: 180px;">
                   <span id="icon-compress-all-slot"></span>
                   <span>Cache All Library Variants</span>
                 </button>
               </div>
+            </div>
+          </div>
 
-              <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.82rem; margin-top: 4px; color: var(--text-secondary);">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                  <input type="checkbox" id="chk-hardware-accel" checked />
-                  <span>Enable GPU hardware decoding (VA-API / NVDEC)</span>
+          <!-- Right Column: System & Desktop Integration -->
+          <div class="settings-column">
+            <div class="settings-column-header">
+              <span id="icon-col-system"></span>
+              <span>System & Desktop Integration</span>
+            </div>
+
+            <!-- Card 1: Desktop Application Menu -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <h3 class="settings-card-title">Desktop Application Menu</h3>
+                  <span class="settings-badge settings-badge-inactive" id="badge-app-menu">
+                    <span class="settings-badge-dot"></span>
+                    <span id="label-app-menu-status">Not in App Menu</span>
+                  </span>
+                </div>
+                <p class="settings-card-desc">
+                  Add or remove Animated Linux in your desktop application launcher (KDE Kickoff, GNOME App Grid, KRunner, Rofi).
+                </p>
+              </div>
+
+              <div style="background: var(--bg-surface); padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <div>
+                    <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Desktop Launcher Entry</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">~/.local/share/applications/animated-linux.desktop</div>
+                  </div>
+                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="chk-app-menu" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                    <span style="font-size: 0.82rem; color: var(--text-secondary);" id="text-app-menu-toggle">Show in Menu</span>
+                  </label>
+                </div>
+                <div style="display: flex; gap: 10px; padding-top: 6px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap;">
+                  <button class="btn btn-secondary" id="btn-add-app-menu" style="flex: 1; min-width: 130px; font-size: 0.8rem; padding: 6px 12px;">
+                    Add to App Menu
+                  </button>
+                  <button class="btn btn-secondary" id="btn-remove-app-menu" style="flex: 1; min-width: 130px; font-size: 0.8rem; padding: 6px 12px;">
+                    Remove from App Menu
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: System Startup (Autostart) -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <h3 class="settings-card-title">System Startup</h3>
+                  <span class="settings-badge settings-badge-inactive" id="badge-autostart">
+                    <span class="settings-badge-dot"></span>
+                    <span id="label-autostart-status">Disabled</span>
+                  </span>
+                </div>
+                <p class="settings-card-desc">
+                  Automatically launch Animated Linux in the background when logging into your desktop session.
+                </p>
+              </div>
+
+              <div style="background: var(--bg-surface); padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Launch on System Startup</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">~/.config/autostart/animated-linux.desktop</div>
+                </div>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="chk-autostart" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                  <span style="font-size: 0.82rem; color: var(--text-secondary);">Start with Desktop</span>
                 </label>
               </div>
             </div>
-          </div>
 
-          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
-
-          <div>
-            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Wallpaper Engine Backend</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
-              Active: <strong id="label-active-backend">KDE Plasma 6 (MPV Native Backend)</strong>
-            </p>
-            <select id="setting-backend" style="width: 440px;">
-              <option value="kde_mpv">KDE Plasma 6 (MPV Native - Desktop icons visible)</option>
-              <option value="kde">KDE Plasma 6 (QtMultimedia - Desktop icons visible)</option>
-              <option value="mpv">Standalone MPV Engine (mpvpaper - Wayland layer surface)</option>
-            </select>
-            <p id="desc-backend-mode" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px; line-height: 1.4;">
-              KDE Plasma MPV embeds libmpv directly inside PlasmaShell underneath desktop icons with full hardware acceleration.
-            </p>
-          </div>
-
-          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
-
-          <!-- Window Close & Minimize Behavior -->
-          <div>
-            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Window Close & Minimize Behavior</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
-              Choose whether closing the window prompts for action, minimizes to system tray, or terminates playback.
-            </p>
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-              <select id="setting-close-behavior" style="width: 380px;">
-                <option value="ask" selected>Ask every time (Show Controls Dialog)</option>
-                <option value="tray">Minimize to System Tray (Keep wallpaper running)</option>
-                <option value="minimize">Minimize to Taskbar</option>
-                <option value="quit">Stop wallpaper, revert desktop, and quit completely</option>
-              </select>
-              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to default (Ask every time)" style="font-size: 0.8rem; padding: 6px 12px;">
-                Reset to Default
-              </button>
-            </div>
-          </div>
-
-          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
-
-          <!-- System Startup -->
-          <div>
-            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">System Startup</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
-              Automatically launch Animated Linux in the background when logging into your desktop session.
-            </p>
-            <div style="background: var(--bg-surface); padding: 14px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-              <div>
-                <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Launch on System Startup</div>
-                <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 3px;">Creates or removes XDG autostart entry (~/.config/autostart/animated-linux.desktop).</div>
+            <!-- Card 3: Window Close & Minimize Behavior -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3 class="settings-card-title">Window Close & Minimize Behavior</h3>
+                <p class="settings-card-desc">
+                  Choose whether closing the window prompts for action, minimizes to system tray, or terminates playback.
+                </p>
               </div>
-              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
-                <input type="checkbox" id="chk-autostart" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
-                <span id="label-autostart-status" style="font-size: 0.82rem; color: var(--text-secondary); font-weight: 400;">Disabled</span>
-              </label>
-            </div>
-          </div>
 
-          <hr style="border: 0; border-top: 1px solid var(--border-subtle);" />
-
-          <!-- Storage & Cache Management -->
-          <div>
-            <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Storage & Resolution Variants Cache</h3>
-            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px;">
-              Manage stored video files and purge generated resolution variants to reclaim disk space. Original videos are never deleted.
-            </p>
-            <div style="background: var(--bg-surface); padding: 14px 18px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-              <div>
-                <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);" id="cache-stats-text">Cached Variants: Calculating...</div>
-                <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 3px;">Stored in local application data directory.</div>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <select id="setting-close-behavior" style="width: 100%;">
+                  <option value="ask" selected>Ask every time (Show Controls Dialog)</option>
+                  <option value="tray">Minimize to System Tray (Keep wallpaper running)</option>
+                  <option value="minimize">Minimize to Taskbar</option>
+                  <option value="quit">Stop wallpaper, revert desktop, and quit completely</option>
+                </select>
+                <div style="display: flex; justify-content: flex-end;">
+                  <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to default (Ask every time)" style="font-size: 0.8rem; padding: 6px 12px;">
+                    Reset to Default
+                  </button>
+                </div>
               </div>
-              <div style="display: flex; gap: 8px;">
-                <button class="btn btn-secondary" id="btn-clear-cache" title="Delete all generated Q1-Q4 variant files to free disk space">Clear Variants Cache</button>
-                <button class="btn btn-secondary" id="btn-open-folder-settings" title="Open wallpapers directory in system file manager">
-                  <span id="icon-folder-settings-slot"></span>
-                  <span>Open Storage Folder</span>
-                </button>
+            </div>
+
+            <!-- Card 4: Storage & Cache Management -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3 class="settings-card-title">Storage & Resolution Variants Cache</h3>
+                <p class="settings-card-desc">
+                  Manage stored video files and purge generated resolution variants to reclaim disk space. Original videos are never deleted.
+                </p>
+              </div>
+
+              <div style="background: var(--bg-surface); padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                  <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);" id="cache-stats-text">Cached Variants: Calculating...</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Stored in local application data directory.</div>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button class="btn btn-secondary" id="btn-clear-cache" title="Delete all generated Q1-Q4 variant files to free disk space" style="flex: 1; min-width: 150px;">
+                    Clear Variants Cache
+                  </button>
+                  <button class="btn btn-secondary" id="btn-open-folder-settings" title="Open wallpapers directory in system file manager" style="flex: 1; min-width: 150px;">
+                    <span id="icon-folder-settings-slot"></span>
+                    <span>Open Storage Folder</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

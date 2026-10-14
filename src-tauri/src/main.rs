@@ -659,6 +659,116 @@ fn hide_window(window: tauri::WebviewWindow) {
     let _ = window.hide();
 }
 
+fn resolve_app_executable_and_icon() -> (String, String) {
+    let mut exe_str = String::new();
+    let mut icon_str = String::new();
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        let mut check_dir = current_exe.parent();
+        while let Some(dir) = check_dir {
+            let dist_bin = dir.join("dist").join("animated-linux-x86_64");
+            let rel_bin = dir.join("src-tauri").join("target").join("release").join("animated-linux");
+            let launch_sh = dir.join("setup").join("launch.sh");
+            let icon_file = dir.join("src-tauri").join("icons").join("128x128.png");
+            let alt_icon = dir.join("src-tauri").join("icons").join("icon.png");
+
+            if dist_bin.exists() {
+                exe_str = dist_bin.to_string_lossy().to_string();
+            } else if rel_bin.exists() {
+                exe_str = rel_bin.to_string_lossy().to_string();
+            } else if launch_sh.exists() && exe_str.is_empty() {
+                exe_str = launch_sh.to_string_lossy().to_string();
+            }
+
+            if icon_file.exists() {
+                icon_str = icon_file.to_string_lossy().to_string();
+            } else if alt_icon.exists() && icon_str.is_empty() {
+                icon_str = alt_icon.to_string_lossy().to_string();
+            }
+
+            if !exe_str.is_empty() && !icon_str.is_empty() {
+                break;
+            }
+            check_dir = dir.parent();
+        }
+    }
+
+    if exe_str.is_empty() {
+        if let Ok(cur) = std::env::current_exe() {
+            exe_str = cur.to_string_lossy().to_string();
+        } else {
+            exe_str = "animated-linux".to_string();
+        }
+    }
+
+    if icon_str.is_empty() {
+        icon_str = "animated-linux".to_string();
+    }
+
+    (exe_str, icon_str)
+}
+
+fn install_system_icon(source_icon: &str) {
+    if let Some(data_dir) = dirs::data_local_dir() {
+        let icon_dest_dir = data_dir.join("icons").join("hicolor").join("128x128").join("apps");
+        let _ = std::fs::create_dir_all(&icon_dest_dir);
+        let src = Path::new(source_icon);
+        if src.exists() {
+            let _ = std::fs::copy(src, icon_dest_dir.join("animated-linux.png"));
+        }
+    }
+}
+
+#[tauri::command]
+fn get_app_menu_status() -> bool {
+    if let Some(data_dir) = dirs::data_local_dir() {
+        let desktop_file = data_dir.join("applications").join("animated-linux.desktop");
+        desktop_file.exists()
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+fn set_app_menu_entry(enable: bool) -> Result<bool, String> {
+    let data_dir = dirs::data_local_dir().ok_or_else(|| "Could not locate user data directory".to_string())?;
+    let apps_dir = data_dir.join("applications");
+    let desktop_file = apps_dir.join("animated-linux.desktop");
+
+    if enable {
+        std::fs::create_dir_all(&apps_dir).map_err(|e| format!("Failed to create applications directory: {}", e))?;
+        let (exe_path, icon_source) = resolve_app_executable_and_icon();
+        install_system_icon(&icon_source);
+
+        let desktop_content = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Animated Linux\n\
+             GenericName=Animated Wallpaper Engine\n\
+             Comment=Hardware-accelerated animated wallpaper engine for Linux\n\
+             Exec=\"{}\"\n\
+             Icon=animated-linux\n\
+             Terminal=false\n\
+             Categories=Utility;Graphics;Settings;\n\
+             Keywords=wallpaper;video;animated;engine;plasma;kde;\n\
+             StartupWMClass=animated-linux\n",
+            exe_path
+        );
+
+        std::fs::write(&desktop_file, desktop_content).map_err(|e| format!("Failed to write application menu desktop entry: {}", e))?;
+        let _ = Command::new("update-desktop-database").arg(&apps_dir).output();
+        let _ = Command::new("kbuildsycoca6").output();
+        Ok(true)
+    } else {
+        if desktop_file.exists() {
+            std::fs::remove_file(&desktop_file).map_err(|e| format!("Failed to remove application menu desktop entry: {}", e))?;
+        }
+        let _ = Command::new("update-desktop-database").arg(&apps_dir).output();
+        let _ = Command::new("kbuildsycoca6").output();
+        Ok(false)
+    }
+}
+
 #[tauri::command]
 fn get_autostart_status() -> bool {
     if let Some(config_dir) = dirs::config_dir() {
@@ -677,26 +787,21 @@ fn set_autostart(enable: bool) -> Result<bool, String> {
 
     if enable {
         std::fs::create_dir_all(&autostart_dir).map_err(|e| format!("Failed to create autostart directory: {}", e))?;
-        let current_exe = std::env::current_exe().map_err(|e| format!("Failed to determine current executable path: {}", e))?;
-        let exe_str = current_exe.to_string_lossy();
-
-        let icon_path = current_exe.parent()
-            .map(|p| p.join("icons").join("icon.png"))
-            .filter(|p| p.exists())
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "animated-linux".to_string());
+        let (exe_path, icon_source) = resolve_app_executable_and_icon();
+        install_system_icon(&icon_source);
 
         let desktop_content = format!(
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=Animated Linux\n\
+             GenericName=Animated Wallpaper Engine\n\
              Comment=Hardware-accelerated animated wallpaper engine for Linux\n\
              Exec=\"{}\" --autostart\n\
-             Icon={}\n\
+             Icon=animated-linux\n\
              Terminal=false\n\
              Categories=Utility;Settings;\n\
              X-GNOME-Autostart-enabled=true\n",
-            exe_str, icon_path
+            exe_path
         );
 
         std::fs::write(&desktop_file, desktop_content).map_err(|e| format!("Failed to write autostart desktop entry: {}", e))?;
@@ -807,6 +912,8 @@ fn main() {
             clear_variant_cache,
             get_autostart_status,
             set_autostart,
+            get_app_menu_status,
+            set_app_menu_entry,
             get_wallpaper_backend,
             set_wallpaper_backend
         ])

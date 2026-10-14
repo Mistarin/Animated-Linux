@@ -182,6 +182,8 @@ function renderStaticIcons() {
   setIcon('icon-sizing-slot', Icons.sizing);
   setIcon('icon-compress-active-slot', Icons.zap);
   setIcon('icon-compress-all-slot', Icons.gauge);
+  setIcon('icon-col-engine', Icons.sliders);
+  setIcon('icon-col-system', Icons.settings);
 
   setIcon('icon-win-min', Icons.winMin);
   setIcon('icon-win-max', Icons.winMax);
@@ -204,6 +206,7 @@ async function init() {
   setupKeyboardShortcuts();
   setupStorageControls();
   setupAutostartControls();
+  setupAppMenuControls();
   setupBackendControls();
   setupPlayerInfoJump();
   setupDeleteModal();
@@ -1486,12 +1489,22 @@ function setupStorageControls() {
 // System Autostart Controls
 async function setupAutostartControls() {
   if (!chkAutostart) return;
+  const badgeAutostart = document.getElementById('badge-autostart');
 
   const updateAutostartUi = (enabled) => {
     chkAutostart.checked = enabled;
     if (labelAutostartStatus) {
       labelAutostartStatus.textContent = enabled ? 'Enabled' : 'Disabled';
       labelAutostartStatus.style.color = enabled ? '#10b981' : 'var(--text-secondary)';
+    }
+    if (badgeAutostart) {
+      if (enabled) {
+        badgeAutostart.classList.remove('settings-badge-inactive');
+        badgeAutostart.classList.add('settings-badge-active');
+      } else {
+        badgeAutostart.classList.remove('settings-badge-active');
+        badgeAutostart.classList.add('settings-badge-inactive');
+      }
     }
   };
 
@@ -1520,6 +1533,67 @@ async function setupAutostartControls() {
       } catch (_) {}
     }
   });
+}
+
+// Application Menu Integration Controls
+async function setupAppMenuControls() {
+  const chkAppMenu = document.getElementById('chk-app-menu');
+  const labelAppMenuStatus = document.getElementById('label-app-menu-status');
+  const badgeAppMenu = document.getElementById('badge-app-menu');
+  const btnAddAppMenu = document.getElementById('btn-add-app-menu');
+  const btnRemoveAppMenu = document.getElementById('btn-remove-app-menu');
+  const textAppMenuToggle = document.getElementById('text-app-menu-toggle');
+
+  if (!chkAppMenu) return;
+
+  const updateAppMenuUi = (inMenu) => {
+    chkAppMenu.checked = inMenu;
+    if (labelAppMenuStatus) {
+      labelAppMenuStatus.textContent = inMenu ? 'In Application Menu' : 'Not in App Menu';
+      labelAppMenuStatus.style.color = inMenu ? '#10b981' : 'var(--text-secondary)';
+    }
+    if (textAppMenuToggle) {
+      textAppMenuToggle.textContent = inMenu ? 'In App Menu' : 'Show in Menu';
+    }
+    if (badgeAppMenu) {
+      if (inMenu) {
+        badgeAppMenu.classList.remove('settings-badge-inactive');
+        badgeAppMenu.classList.add('settings-badge-active');
+      } else {
+        badgeAppMenu.classList.remove('settings-badge-active');
+        badgeAppMenu.classList.add('settings-badge-inactive');
+      }
+    }
+  };
+
+  try {
+    const inMenu = await invoke('get_app_menu_status');
+    updateAppMenuUi(inMenu);
+  } catch (err) {
+    console.error('Failed to query app menu status:', err);
+  }
+
+  const setMenuState = async (targetState) => {
+    try {
+      const result = await invoke('set_app_menu_entry', { enable: targetState });
+      updateAppMenuUi(result);
+      if (result) {
+        showToast('Animated Linux added to application menu', 'success');
+      } else {
+        showToast('Animated Linux removed from application menu', 'info');
+      }
+    } catch (err) {
+      showToast(`Failed to update application menu entry: ${err}`, 'error');
+      try {
+        const inMenu = await invoke('get_app_menu_status');
+        updateAppMenuUi(inMenu);
+      } catch (_) {}
+    }
+  };
+
+  chkAppMenu.addEventListener('change', (e) => setMenuState(e.target.checked));
+  if (btnAddAppMenu) btnAddAppMenu.addEventListener('click', () => setMenuState(true));
+  if (btnRemoveAppMenu) btnRemoveAppMenu.addEventListener('click', () => setMenuState(false));
 }
 
 // Wallpaper Engine Backend Controls

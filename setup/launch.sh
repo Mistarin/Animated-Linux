@@ -49,8 +49,35 @@ for arg in "$@"; do
     fi
 done
 
+cleanup_port() {
+    local port="$1"
+    local pids=""
+    if command -v lsof >/dev/null 2>&1; then
+        pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    elif command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser "$port"/tcp 2>/dev/null || true)"
+    fi
+
+    if [ -n "$pids" ]; then
+        echo "[Launcher] Port $port is already in use by PID(s): $pids"
+        echo "[Launcher] Terminating stale process on port $port..."
+        kill -15 $pids 2>/dev/null || true
+        sleep 0.5
+        local remaining=""
+        if command -v lsof >/dev/null 2>&1; then
+            remaining="$(lsof -ti :"$port" 2>/dev/null || true)"
+        fi
+        if [ -n "$remaining" ]; then
+            kill -9 $remaining 2>/dev/null || true
+            sleep 0.2
+        fi
+        echo "[Launcher] Port $port is now free."
+    fi
+}
+
 # 1. Default: Run directly from source code with Live HMR & incremental compile
 if [ "$USE_RELEASE" -eq 0 ]; then
+    cleanup_port 1420
     echo "[Launcher] Running directly from source code (Live HMR)..."
     exec pnpm tauri dev
 fi

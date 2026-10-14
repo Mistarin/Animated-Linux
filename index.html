@@ -20,13 +20,6 @@
       </div>
 
       <div class="header-right" data-tauri-drag-region="false">
-        <div class="header-actions" data-tauri-drag-region="false">
-          <button class="btn btn-primary" id="btn-import" data-tauri-drag-region="false">
-            <span id="icon-import-slot"></span>
-            <span>Import Video</span>
-          </button>
-        </div>
-
         <div class="window-controls" data-tauri-drag-region="false">
           <button class="win-btn win-min" id="btn-win-min" title="Minimize" aria-label="Minimize" data-tauri-drag-region="false">
             <span id="icon-win-min"></span>
@@ -190,10 +183,16 @@
                 </div>
 
                 <!-- Hardware Accel -->
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
-                  <input type="checkbox" id="chk-hardware-accel" style="width: 16px; height: 16px; accent-color: #10b981; cursor: pointer;" checked />
-                  <span style="font-size: 0.82rem; color: var(--text-secondary);">Enable GPU hardware decoding (VA-API / NVDEC)</span>
-                </label>
+                <div class="setting-row">
+                  <div class="setting-row-text">
+                    <div class="setting-label">Hardware Acceleration</div>
+                    <div class="setting-subtext">Enable GPU hardware decoding (VA-API / NVDEC)</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-hardware-accel" checked />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -206,18 +205,44 @@
                 </p>
               </div>
 
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <div>
-                  <div style="font-size: 0.82rem; color: var(--text-secondary);">Pausing Trigger Policy:</div>
-                  <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Monitors focused Wayland surfaces and active window states</div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div>
+                    <div style="font-size: 0.82rem; color: var(--text-secondary);">Pausing Trigger Policy:</div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Monitors focused Wayland surfaces and active window states</div>
+                  </div>
+                  <select id="setting-pause-policy" style="min-width: 170px;">
+                    <option value="1" selected>Fullscreen Game / App</option>
+                    <option value="2">Maximized Window Active</option>
+                    <option value="3">Any Window Active / Covered</option>
+                    <option value="0">Never Pause (Always Play)</option>
+                    <option value="4">Battery Power (Laptops)</option>
+                  </select>
                 </div>
-                <select id="setting-pause-policy" style="min-width: 170px;">
-                  <option value="1" selected>Fullscreen Game / App</option>
-                  <option value="2">Maximized Window Active</option>
-                  <option value="3">Any Window Active / Covered</option>
-                  <option value="0">Never Pause (Always Play)</option>
-                  <option value="4">Battery Power (Laptops)</option>
-                </select>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+                  <div class="setting-row">
+                    <div class="setting-row-text">
+                      <div class="setting-label">Fade to black when inactive or paused</div>
+                      <div class="setting-subtext">Smoothly fades to black when paused, covered, or nothing is playing</div>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="chk-inactive-black" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-row-text">
+                      <div class="setting-label">Restart animation from beginning on resume</div>
+                      <div class="setting-subtext">Restarts video/animation from 0:00 instead of resuming mid-way</div>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="chk-restart-on-resume" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -240,6 +265,26 @@
                   <span>Cache All Library Variants</span>
                 </button>
               </div>
+
+              <!-- Caching Progress Bar & Live Status -->
+              <div id="caching-progress-container" style="display: none; margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    <span id="caching-progress-spinner" class="spin"></span>
+                    <span id="caching-progress-title">Caching Library Variants...</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="caching-progress-count" style="font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums;">0 / 0</span>
+                    <button class="btn btn-ghost btn-sm" id="btn-cancel-caching" style="padding: 2px 10px; font-size: 0.72rem; color: var(--text-danger); border: 1px solid rgba(239, 68, 68, 0.3);">Cancel</button>
+                  </div>
+                </div>
+                <div style="height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; position: relative;">
+                  <div id="caching-progress-bar" style="height: 100%; width: 0%; background: var(--accent-gradient, var(--primary)); border-radius: 3px; transition: width 0.3s ease;"></div>
+                </div>
+                <div id="caching-progress-detail" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  Initializing multi-threaded encoding workers...
+                </div>
+              </div>
             </div>
           </div>
 
@@ -253,7 +298,7 @@
             <!-- Card 1: Desktop Application Menu -->
             <div class="settings-card">
               <div class="settings-card-header">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div class="settings-card-title-row">
                   <h3 class="settings-card-title">Desktop Application Menu</h3>
                   <span class="settings-badge settings-badge-inactive" id="badge-app-menu">
                     <span class="settings-badge-dot"></span>
@@ -261,36 +306,26 @@
                   </span>
                 </div>
                 <p class="settings-card-desc">
-                  Add or remove Animated Linux in your desktop application launcher (KDE Kickoff, GNOME App Grid, KRunner, Rofi).
+                  Show Animated Linux in your desktop application launcher (KDE Kickoff, GNOME App Grid, KRunner, Rofi).
                 </p>
               </div>
 
-              <div style="background: var(--bg-surface); padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <div>
-                    <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Desktop Launcher Entry</div>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">~/.local/share/applications/animated-linux.desktop</div>
-                  </div>
-                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
-                    <input type="checkbox" id="chk-app-menu" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
-                    <span style="font-size: 0.82rem; color: var(--text-secondary);" id="text-app-menu-toggle">Show in Menu</span>
-                  </label>
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <div class="setting-label">Application Launcher Entry</div>
+                  <div class="setting-subtext" id="text-app-menu-toggle">Show in Menu</div>
                 </div>
-                <div style="display: flex; gap: 10px; padding-top: 6px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap;">
-                  <button class="btn btn-secondary" id="btn-add-app-menu" style="flex: 1; min-width: 130px; font-size: 0.8rem; padding: 6px 12px;">
-                    Add to App Menu
-                  </button>
-                  <button class="btn btn-secondary" id="btn-remove-app-menu" style="flex: 1; min-width: 130px; font-size: 0.8rem; padding: 6px 12px;">
-                    Remove from App Menu
-                  </button>
-                </div>
+                <label class="switch">
+                  <input type="checkbox" id="chk-app-menu" />
+                  <span class="switch-slider"></span>
+                </label>
               </div>
             </div>
 
             <!-- Card 2: System Startup (Autostart) -->
             <div class="settings-card">
               <div class="settings-card-header">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div class="settings-card-title-row">
                   <h3 class="settings-card-title">System Startup</h3>
                   <span class="settings-badge settings-badge-inactive" id="badge-autostart">
                     <span class="settings-badge-dot"></span>
@@ -302,14 +337,14 @@
                 </p>
               </div>
 
-              <div style="background: var(--bg-surface); padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                <div>
-                  <div style="font-size: 0.84rem; font-weight: 500; color: var(--text-main);">Launch on System Startup</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">~/.config/autostart/animated-linux.desktop</div>
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <div class="setting-label">Launch on System Startup</div>
+                  <div class="setting-subtext">Start minimized in system tray</div>
                 </div>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;">
-                  <input type="checkbox" id="chk-autostart" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
-                  <span style="font-size: 0.82rem; color: var(--text-secondary);">Start with Desktop</span>
+                <label class="switch">
+                  <input type="checkbox" id="chk-autostart" />
+                  <span class="switch-slider"></span>
                 </label>
               </div>
             </div>
@@ -370,106 +405,131 @@
 
     <!-- Bottom Media Player Controls -->
     <footer class="player-bar">
+      <!-- Left: Active Wallpaper Card & Import Video Button -->
       <div class="player-left">
         <div class="player-info clickable" id="player-info-jump" title="Click to reveal active wallpaper in library" style="cursor: pointer;">
           <img src="/src-tauri/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
-          <div style="overflow: hidden;">
+          <div class="player-title-wrap">
             <div class="player-title" id="now-playing-title">No Wallpaper Active</div>
             <div class="player-sub" id="now-playing-sub">Select a wallpaper to play</div>
           </div>
         </div>
-
-        <div class="player-controls">
-          <button class="ctrl-btn play-btn" id="btn-toggle-play" title="Play / Pause">
-            <!-- Injected via JS -->
-          </button>
-          <button class="ctrl-btn" id="btn-stop-wp" title="Stop & Restore Static Desktop">
-            <!-- Injected via JS -->
-          </button>
-        </div>
+        <button class="btn btn-primary btn-import-player" id="btn-import">
+          <span id="icon-import-slot"></span>
+          <span>Import Video</span>
+        </button>
       </div>
 
-      <!-- Geometry, Quality, and Speed Controls (Zero audio controls) -->
-      <div class="player-sliders">
-        <!-- Sizing / Fill Mode -->
-        <div class="slider-group" title="Video Sizing / Fill Mode">
-          <span id="icon-sizing-slot" style="display: flex;"></span>
-          <select id="select-sizing" style="padding: 3px 6px;">
-            <option value="2" selected>Fill / Zoom</option>
-            <option value="1">Fit Aspect</option>
-            <option value="0">Stretch</option>
-            <option value="3">Center</option>
-          </select>
-        </div>
+      <!-- Center: Centered Play/Pause and Stop Controls -->
+      <div class="player-center">
+        <button class="ctrl-btn play-btn" id="btn-toggle-play" title="Play / Pause">
+          <!-- Injected via JS -->
+        </button>
+        <button class="ctrl-btn stop-btn" id="btn-stop-wp" title="Stop & Restore Static Desktop">
+          <!-- Injected via JS -->
+        </button>
+      </div>
 
-        <!-- Pan Position Offsets -->
-        <div class="slider-group" title="Horizontal Pan Position Offset">
-          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">X:</span>
-          <select id="select-pan-x" style="padding: 3px 6px; min-width: 58px;">
-            <option value="-50">-50</option>
-            <option value="-40">-40</option>
-            <option value="-30">-30</option>
-            <option value="-25">-25</option>
-            <option value="-20">-20</option>
-            <option value="-15">-15</option>
-            <option value="-10">-10</option>
-            <option value="-5">-5</option>
-            <option value="0" selected>0</option>
-            <option value="5">+5</option>
-            <option value="10">+10</option>
-            <option value="15">+15</option>
-            <option value="20">+20</option>
-            <option value="25">+25</option>
-            <option value="30">+30</option>
-            <option value="40">+40</option>
-            <option value="50">+50</option>
-          </select>
-        </div>
-        <div class="slider-group" title="Vertical Pan Position Offset">
-          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">Y:</span>
-          <select id="select-pan-y" style="padding: 3px 6px; min-width: 58px;">
-            <option value="-50">-50</option>
-            <option value="-40">-40</option>
-            <option value="-30">-30</option>
-            <option value="-25">-25</option>
-            <option value="-20">-20</option>
-            <option value="-15">-15</option>
-            <option value="-10">-10</option>
-            <option value="-5">-5</option>
-            <option value="0" selected>0</option>
-            <option value="5">+5</option>
-            <option value="10">+10</option>
-            <option value="15">+15</option>
-            <option value="20">+20</option>
-            <option value="25">+25</option>
-            <option value="30">+30</option>
-            <option value="40">+40</option>
-            <option value="50">+50</option>
-          </select>
-          <button class="btn btn-icon" id="btn-reset-pan" title="Reset Position to Center (0, 0)" style="padding: 2px 6px; font-size: 0.68rem; color: var(--text-dim);">
-            0
+      <!-- Right: Time, Quality Badge, and Video Adjustments Dropdown Popover -->
+      <div class="player-right">
+        <div class="player-time-badge" id="player-time-display" title="Active wallpaper duration">0:00</div>
+        <div class="player-quality-badge" id="player-quality-pill" title="Current quality profile">Q5</div>
+
+        <div class="sizing-popover" id="sizing-popover-container">
+          <button class="btn btn-icon btn-popover-trigger" id="btn-sizing-toggle" title="Video adjustments & sizing">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
           </button>
-        </div>
 
-        <!-- Quality Profile (1 - 5) -->
-        <div class="slider-group" title="Quality Profile (Q1: HD, Q2: FULLHD, Q3: 2K, Q4: 4K, Q5: Native)">
-          <span id="icon-slider-quality-slot" style="display: flex;"></span>
-          <input type="range" id="slider-quality" min="1" max="5" value="5" step="1" style="width: 60px;" />
-          <span id="label-quality-val" style="font-size: 0.74rem; color: var(--text-secondary); min-width: 22px;">Q5</span>
-        </div>
+          <!-- Popover Menu -->
+          <div class="sizing-popover-menu hidden" id="sizing-popover-menu">
+            <div class="popover-header">
+              <span class="popover-title">Video Adjustments</span>
+            </div>
 
-        <!-- Speed Dropdown with dark contrast -->
-        <div class="slider-group" title="Playback Speed">
-          <span id="icon-slider-speed-slot" style="display: flex;"></span>
-          <select id="select-speed" style="padding: 3px 6px;">
-            <option value="0.25">0.25x</option>
-            <option value="0.5">0.5x</option>
-            <option value="0.75">0.75x</option>
-            <option value="1.0" selected>1.0x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2.0">2.0x</option>
-          </select>
+            <!-- Video Sizing -->
+            <div class="popover-row">
+              <span class="popover-label">Sizing</span>
+              <select id="select-sizing" class="popover-select" style="min-width: 120px;">
+                <option value="2" selected>Fill / Zoom</option>
+                <option value="1">Fit Aspect</option>
+                <option value="0">Stretch</option>
+                <option value="3">Center</option>
+              </select>
+            </div>
+
+            <!-- Pan Position Offsets (X, Y compact) -->
+            <div class="popover-row">
+              <span class="popover-label">Pan (X, Y)</span>
+              <div class="popover-pan-group">
+                <span class="pan-axis-label">X</span>
+                <select id="select-pan-x" class="popover-select-pan">
+                  <option value="-50">-50</option>
+                  <option value="-40">-40</option>
+                  <option value="-30">-30</option>
+                  <option value="-25">-25</option>
+                  <option value="-20">-20</option>
+                  <option value="-15">-15</option>
+                  <option value="-10">-10</option>
+                  <option value="-5">-5</option>
+                  <option value="0" selected>0</option>
+                  <option value="5">+5</option>
+                  <option value="10">+10</option>
+                  <option value="15">+15</option>
+                  <option value="20">+20</option>
+                  <option value="25">+25</option>
+                  <option value="30">+30</option>
+                  <option value="40">+40</option>
+                  <option value="50">+50</option>
+                </select>
+                <span class="pan-axis-label">Y</span>
+                <select id="select-pan-y" class="popover-select-pan">
+                  <option value="-50">-50</option>
+                  <option value="-40">-40</option>
+                  <option value="-30">-30</option>
+                  <option value="-25">-25</option>
+                  <option value="-20">-20</option>
+                  <option value="-15">-15</option>
+                  <option value="-10">-10</option>
+                  <option value="-5">-5</option>
+                  <option value="0" selected>0</option>
+                  <option value="5">+5</option>
+                  <option value="10">+10</option>
+                  <option value="15">+15</option>
+                  <option value="20">+20</option>
+                  <option value="25">+25</option>
+                  <option value="30">+30</option>
+                  <option value="40">+40</option>
+                  <option value="50">+50</option>
+                </select>
+                <button class="btn btn-icon btn-reset-pan" id="btn-reset-pan" title="Reset Position to Center (0, 0)">
+                  0
+                </button>
+              </div>
+            </div>
+
+            <!-- Quality Profile (1 - 5) -->
+            <div class="popover-row">
+              <span class="popover-label">Quality</span>
+              <div class="popover-quality-group">
+                <input type="range" id="slider-quality" min="1" max="5" value="5" step="1" style="width: 80px;" />
+                <span id="label-quality-val" class="popover-val-badge">Q5</span>
+              </div>
+            </div>
+
+            <!-- Playback Speed -->
+            <div class="popover-row">
+              <span class="popover-label">Speed</span>
+              <select id="select-speed" class="popover-select" style="min-width: 90px;">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="0.75">0.75x</option>
+                <option value="1.0" selected>1.0x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2.0">2.0x</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </footer>
@@ -484,16 +544,12 @@
             </div>
             <div>
               <h3 class="modal-title" id="modal-close-title">Close Animated Linux</h3>
-              <p class="modal-subtitle">Choose how to handle Animated Linux and active wallpaper playback.</p>
+              <p class="modal-subtitle">Choose how to handle Animated Linux and active playback</p>
             </div>
           </div>
           <button class="btn btn-icon modal-btn-close" id="btn-close-dialog-cancel" title="Dismiss">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
-        </div>
-
-        <div style="margin: 0 20px 14px 20px; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45;">
-          <strong>Playback requirement:</strong> Animated wallpapers require Animated Linux to remain running (at least in your system tray). If you quit, playback will stop and your desktop will safely revert to your default static wallpaper.
         </div>
 
         <div class="modal-options-list">
@@ -507,7 +563,7 @@
                 <span>Minimize to System Tray</span>
                 <span class="badge-recommended">Recommended</span>
               </div>
-              <p class="modal-option-desc">Active animated wallpaper continues playing smoothly on your desktop. Animated Linux stays accessible anytime from your system tray icon.</p>
+              <p class="modal-option-desc">Wallpaper keeps playing smoothly. Accessible anytime from your tray.</p>
             </div>
           </button>
 
@@ -518,7 +574,7 @@
             </div>
             <div class="modal-option-text">
               <div class="modal-option-title">Minimize to Taskbar</div>
-              <p class="modal-option-desc">Minimizes the window to your system taskbar without hiding into the tray.</p>
+              <p class="modal-option-desc">Hides the window to your system taskbar without tray minimize.</p>
             </div>
           </button>
 
@@ -528,15 +584,18 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
             </div>
             <div class="modal-option-text">
-              <div class="modal-option-title">Stop Wallpaper & Quit Application</div>
-              <p class="modal-option-desc">Stops animated wallpaper playback, safely restores your default static desktop background, and terminates all Animated Linux processes.</p>
+              <div class="modal-option-title">Stop Wallpaper & Quit</div>
+              <p class="modal-option-desc">Safely restores default static desktop wallpaper and terminates app.</p>
             </div>
           </button>
         </div>
 
         <div class="modal-footer">
           <label class="modal-checkbox-label">
-            <input type="checkbox" id="chk-remember-close-action" class="modal-checkbox" />
+            <label class="switch switch-sm">
+              <input type="checkbox" id="chk-remember-close-action" class="modal-checkbox" />
+              <span class="switch-slider"></span>
+            </label>
             <span>Remember my choice (can be changed in Settings)</span>
           </label>
           <button class="btn btn-secondary" id="btn-dialog-cancel-footer">Cancel</button>

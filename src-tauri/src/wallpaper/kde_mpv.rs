@@ -75,12 +75,17 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
             0 => 0, // Never pause
             1 => 5, // FullScreen
             2 => 2, // Max
-            3 => 3, // Focus (Pause when any visible window is active)
+            3 => 1, // Any (Pause when any window is open / not minimized)
+            4 => 0, // Battery
             _ => 0,
         };
+        let pause_on_bat = settings.pause_policy == 4;
         let is_muted = settings.is_muted;
         let volume = settings.volume;
         let speed = settings.speed;
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
+        let is_paused = settings.is_paused;
 
         let script = format!(
             r#"
@@ -97,9 +102,13 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("WallpaperSource", videoSource);
         d.writeConfig("DisplayMode", {display_mode});
         d.writeConfig("PauseMode", {pause_mode});
+        d.writeConfig("PauseOnBatPower", {pause_on_bat});
         d.writeConfig("MuteAudio", {is_muted});
         d.writeConfig("Volume", {volume});
         d.writeConfig("Speed", {speed});
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("UserPaused", {is_paused});
         d.reloadConfig();
     }}
 }}
@@ -109,17 +118,23 @@ print("Applied MPV wallpaper to target " + target);
             video_source_json = video_source_json,
             display_mode = display_mode,
             pause_mode = pause_mode,
+            pause_on_bat = pause_on_bat,
             is_muted = is_muted,
             volume = volume,
-            speed = speed
+            speed = speed,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume,
+            is_paused = is_paused,
         );
 
         Self::run_plasma_script(&script)?;
         Ok(())
     }
 
-    fn pause(&self, screen: Option<i32>) -> Result<(), String> {
+    fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -128,33 +143,77 @@ for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
-        d.writeConfig("PauseMode", 1);
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("UserPaused", true);
         d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume
         );
         Self::run_plasma_script(&script)?;
         Ok(())
     }
 
-    fn resume(&self, screen: Option<i32>) -> Result<(), String> {
+    fn resume(&self, screen: Option<i32>, settings: &PlaybackSettings, wallpaper: Option<&WallpaperItem>) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let pause_mode = match settings.pause_policy {
+            0 => 0,
+            1 => 5,
+            2 => 2,
+            3 => 1,
+            4 => 0,
+            _ => 0,
+        };
+        let pause_on_bat = settings.pause_policy == 4;
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
+        let video_source_js = if let Some(wp) = wallpaper {
+            let video_path = if wp.file_path.starts_with("file://") {
+                wp.file_path.clone()
+            } else {
+                format!("file://{}", wp.file_path)
+            };
+            let source = format!("{}+video", video_path);
+            serde_json::to_string(&source).unwrap_or_else(|_| format!("\"{}\"", source))
+        } else {
+            "\"\"".to_string()
+        };
+
         let script = format!(
             r#"
 var allDesktops = desktops();
 var target = {target_screen};
+var videoSource = {video_source_js};
+
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
+        if (d.wallpaperPlugin !== "com.github.catsout.wallpaperEngineKde") {{
+            d.wallpaperPlugin = "com.github.catsout.wallpaperEngineKde";
+        }}
         d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
-        d.writeConfig("PauseMode", 0);
+        if (videoSource.length > 0) {{
+            d.writeConfig("WallpaperSource", videoSource);
+        }}
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("PauseMode", {pause_mode});
+        d.writeConfig("PauseOnBatPower", {pause_on_bat});
+        d.writeConfig("UserPaused", false);
         d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            video_source_js = video_source_js,
+            pause_mode = pause_mode,
+            pause_on_bat = pause_on_bat,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume
         );
         Self::run_plasma_script(&script)?;
         Ok(())
@@ -219,22 +278,31 @@ for (var i = 0; i < allDesktops.length; i++) {{
         Ok(())
     }
 
-    fn stop(&self, screen: Option<i32>) -> Result<(), String> {
+    fn stop(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let plugin = if settings.inactive_black_screen {
+            "org.kde.color"
+        } else {
+            "org.kde.image"
+        };
         let script = format!(
-            r#"
+            r##"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
-        d.wallpaperPlugin = "org.kde.image";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        d.wallpaperPlugin = "{plugin}";
+        d.currentConfigGroup = Array("Wallpaper", "{plugin}", "General");
+        if ("{plugin}" === "org.kde.color") {{
+            d.writeConfig("Color", "#000000");
+        }}
         d.reloadConfig();
     }}
 }}
-"#,
-            target_screen = target_screen
+"##,
+            target_screen = target_screen,
+            plugin = plugin
         );
         Self::run_plasma_script(&script)?;
         Ok(())

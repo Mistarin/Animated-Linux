@@ -214,7 +214,8 @@ impl WallpaperManager {
         // 1. Cleanly stop old backend
         let old_backend = self.get_active_backend();
         println!("[AnimatedLinux] Switching from {} to {} backend", old_backend.name(), normalized);
-        let _ = old_backend.stop(None);
+        let settings_for_stop = self.current_settings.lock().unwrap().clone();
+        let _ = old_backend.stop(None, &settings_for_stop);
 
         // 2. Persist new selection
         {
@@ -266,11 +267,16 @@ impl WallpaperManager {
     pub fn set_paused(&self, paused: bool) -> Result<(), String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.is_paused = paused;
+        let settings_clone = settings.clone();
+        drop(settings);
+        self.save_settings(&settings_clone);
+
+        let active_wp = self.active_wallpaper.lock().unwrap().clone();
         let backend = self.get_active_backend();
         if paused {
-            backend.pause(None)
+            backend.pause(None, &settings_clone)
         } else {
-            backend.resume(None)
+            backend.resume(None, &settings_clone, active_wp.as_ref())
         }
     }
 
@@ -310,6 +316,8 @@ impl WallpaperManager {
         pause_on_fullscreen: bool,
         pause_policy: u32,
         hardware_accel: bool,
+        inactive_black_screen: bool,
+        restart_on_resume: bool,
     ) -> Result<PlaybackSettings, String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.quality_level = quality_level.clamp(1, 5);
@@ -317,6 +325,8 @@ impl WallpaperManager {
         settings.pause_on_fullscreen = pause_on_fullscreen;
         settings.pause_policy = pause_policy;
         settings.hardware_accel = hardware_accel;
+        settings.inactive_black_screen = inactive_black_screen;
+        settings.restart_on_resume = restart_on_resume;
         let updated = settings.clone();
         drop(settings);
 
@@ -346,9 +356,10 @@ impl WallpaperManager {
     }
 
     pub fn stop(&self) -> Result<(), String> {
-        let _ = self.mpv_backend.stop(None);
-        let _ = self.plasma_mpv_backend.stop(None);
-        let _ = self.plasma_backend.stop(None);
+        let settings = self.current_settings.lock().unwrap().clone();
+        let _ = self.mpv_backend.stop(None, &settings);
+        let _ = self.plasma_mpv_backend.stop(None, &settings);
+        let _ = self.plasma_backend.stop(None, &settings);
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
         Ok(())

@@ -51,6 +51,8 @@ pub struct PlaybackSettings {
     pub quality_level: u32, // 1: HD or lower, 2: FULLHD, 3: 2K, 4: 4K, 5: Native Source
     pub target_fps: u32,    // 0: Source/Native, 15, 24, 30, 60
     pub hardware_accel: bool,
+    pub inactive_black_screen: bool,
+    pub restart_on_resume: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -68,6 +70,8 @@ impl Default for PlaybackSettings {
             quality_level: 5,
             target_fps: 30,
             hardware_accel: true,
+            inactive_black_screen: false,
+            restart_on_resume: false,
         }
     }
 }
@@ -84,13 +88,13 @@ pub trait WallpaperBackend: Send + Sync {
     fn name(&self) -> &'static str;
     fn is_available(&self) -> bool;
     fn apply(&self, wallpaper: &WallpaperItem, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String>;
-    fn pause(&self, screen: Option<i32>) -> Result<(), String>;
-    fn resume(&self, screen: Option<i32>) -> Result<(), String>;
+    fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String>;
+    fn resume(&self, screen: Option<i32>, settings: &PlaybackSettings, wallpaper: Option<&WallpaperItem>) -> Result<(), String>;
     fn set_volume(&self, volume: u32, muted: bool) -> Result<(), String>;
     fn set_speed(&self, speed: f32) -> Result<(), String>;
     fn set_geometry(&self, fill_mode: u32, pan_x: f32, pan_y: f32) -> Result<(), String> {
         let _ = (fill_mode, pan_x, pan_y);
         Ok(())
     }
-    fn stop(&self, screen: Option<i32>) -> Result<(), String>;
+    fn stop(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String>;
 }

@@ -88,6 +88,11 @@ const selectSizing = document.getElementById('select-sizing');
 const selectPanX = document.getElementById('select-pan-x');
 const selectPanY = document.getElementById('select-pan-y');
 const btnResetPan = document.getElementById('btn-reset-pan');
+const playerTimeDisplay = document.getElementById('player-time-display');
+const playerQualityPill = document.getElementById('player-quality-pill');
+const btnSizingToggle = document.getElementById('btn-sizing-toggle');
+const sizingPopoverMenu = document.getElementById('sizing-popover-menu');
+const sizingPopoverContainer = document.getElementById('sizing-popover-container');
 
 // Settings Elements
 const settingQualitySlider = document.getElementById('setting-quality-slider');
@@ -97,7 +102,16 @@ const settingFpsSelect = document.getElementById('setting-fps-select');
 const settingPausePolicy = document.getElementById('setting-pause-policy');
 const btnCompressActive = document.getElementById('btn-compress-active');
 const btnCompressAll = document.getElementById('btn-compress-all');
+const cachingProgressContainer = document.getElementById('caching-progress-container');
+const cachingProgressBar = document.getElementById('caching-progress-bar');
+const cachingProgressCount = document.getElementById('caching-progress-count');
+const cachingProgressDetail = document.getElementById('caching-progress-detail');
+const cachingProgressTitle = document.getElementById('caching-progress-title');
+const cachingProgressSpinner = document.getElementById('caching-progress-spinner');
+const btnCancelCaching = document.getElementById('btn-cancel-caching');
 const chkHardwareAccel = document.getElementById('chk-hardware-accel');
+const chkInactiveBlack = document.getElementById('chk-inactive-black');
+const chkRestartOnResume = document.getElementById('chk-restart-on-resume');
 const settingBackend = document.getElementById('setting-backend');
 const chkAutostart = document.getElementById('chk-autostart');
 const labelAutostartStatus = document.getElementById('label-autostart-status');
@@ -182,6 +196,7 @@ function renderStaticIcons() {
   setIcon('icon-sizing-slot', Icons.sizing);
   setIcon('icon-compress-active-slot', Icons.zap);
   setIcon('icon-compress-all-slot', Icons.gauge);
+  setIcon('caching-progress-spinner', Icons.spinner);
   setIcon('icon-col-engine', Icons.sliders);
   setIcon('icon-col-system', Icons.settings);
 
@@ -314,6 +329,24 @@ window.applyToDisplay = async (screenId) => {
   showToast(`Applied "${activeWallpaper.title}" to display ${screenId}`, 'success');
 };
 
+// Active Wallpaper Duration and Quality Badge Helpers
+function formatDuration(secs) {
+  if (!secs || isNaN(secs) || secs <= 0) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function updateActivePlayerBadge(wp) {
+  if (playerTimeDisplay) {
+    playerTimeDisplay.textContent = wp && wp.duration_secs ? formatDuration(wp.duration_secs) : '0:00';
+  }
+  if (playerQualityPill) {
+    const profile = QUALITY_PROFILES[currentQuality] || QUALITY_PROFILES[5];
+    playerQualityPill.textContent = profile.badge;
+  }
+}
+
 // Library Wallpapers
 async function loadLibrary() {
   try {
@@ -327,6 +360,9 @@ async function loadLibrary() {
         nowPlayingSub.textContent = `Playing on Desktop (${active.format.toUpperCase()} • ${active.resolution || 'HD'})`;
         btnTogglePlay.innerHTML = Icons.pause;
         isPlaying = true;
+        updateActivePlayerBadge(active);
+      } else {
+        updateActivePlayerBadge(null);
       }
     } catch (_) {}
     renderLibrary();
@@ -390,9 +426,9 @@ function renderLibrary() {
       if (isInstalling) {
         return `
         <div class="card" id="wp-card-${wp.id}">
-          <div class="card-thumbnail-wrapper is-installing">
-            <img src="${thumbSrc}" class="card-thumb" alt="${wp.title}" />
-            <span class="badge-installing">Installing...</span>
+          <div class="card-thumbnail-wrapper is-installing" id="thumb-wrapper-${wp.id}">
+            <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" />
+            <span class="badge-installing">Importing</span>
             <div class="loading-bar-wrapper">
               <div class="loading-bar-line"></div>
             </div>
@@ -602,6 +638,7 @@ async function applyWallpaper(wp, screenId) {
     nowPlayingTitle.textContent = targetWp.title;
     nowPlayingSub.textContent = `Playing on Desktop (${targetWp.format.toUpperCase()} • ${targetWp.resolution || 'HD'})`;
     btnTogglePlay.innerHTML = Icons.pause;
+    updateActivePlayerBadge(targetWp);
 
     checkVariantCacheState();
     renderLibrary();
@@ -613,7 +650,12 @@ async function applyWallpaper(wp, screenId) {
 // Media Controls
 function setupMediaControls() {
   btnTogglePlay.addEventListener('click', async () => {
-    if (!activeWallpaper) return;
+    if (!activeWallpaper) {
+      if (libraryItems && libraryItems.length > 0) {
+        await applyWallpaper(libraryItems[0]);
+      }
+      return;
+    }
     isPlaying = !isPlaying;
     btnTogglePlay.innerHTML = isPlaying ? Icons.pause : Icons.play;
     try {
@@ -656,6 +698,7 @@ function setupMediaControls() {
         nowPlayingTitle.textContent = 'No Wallpaper Active';
         nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
         btnTogglePlay.innerHTML = Icons.play;
+        updateActivePlayerBadge(null);
         checkVariantCacheState();
         renderLibrary();
         showToast('Wallpaper stopped; desktop safely restored', 'info');
@@ -701,6 +744,22 @@ function setupMediaControls() {
     const profile = QUALITY_PROFILES[val] || QUALITY_PROFILES[5];
     showToast(`Quality preference saved: ${profile.badge} (${profile.title})`, 'info');
   });
+
+  // Video Adjustments Sizing Popover Menu Toggle & Outside-Click Listener
+  if (btnSizingToggle && sizingPopoverMenu) {
+    btnSizingToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = sizingPopoverMenu.classList.toggle('hidden');
+      btnSizingToggle.classList.toggle('active', !isHidden);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (sizingPopoverContainer && !sizingPopoverContainer.contains(e.target)) {
+        sizingPopoverMenu.classList.add('hidden');
+        btnSizingToggle.classList.remove('active');
+      }
+    });
+  }
 }
 
 // Helper to set or add formatted pan value (+20, -20, 0) in select dropdown
@@ -805,6 +864,35 @@ function setupPerformanceControls() {
     showToast(`Hardware acceleration ${chkHardwareAccel.checked ? 'enabled' : 'disabled'}`, 'info');
   });
 
+  if (chkInactiveBlack) {
+    chkInactiveBlack.addEventListener('change', async () => {
+      await syncPerformanceSettings();
+      showToast(chkInactiveBlack.checked ? 'Inactive screen: Black screen mode enabled' : 'Inactive screen: Static image mode enabled', 'info');
+    });
+  }
+
+  if (chkRestartOnResume) {
+    chkRestartOnResume.addEventListener('change', async () => {
+      await syncPerformanceSettings();
+      showToast(chkRestartOnResume.checked ? 'Resume mode: Restart from beginning (0s)' : 'Resume mode: Continue from paused position', 'info');
+    });
+  }
+
+  // Helper to update caching progress UI
+  function updateCachingProgressUI(payload) {
+    if (!payload) return;
+    if (cachingProgressContainer) cachingProgressContainer.style.display = 'block';
+    if (cachingProgressBar) cachingProgressBar.style.width = `${payload.percent}%`;
+    if (cachingProgressCount) cachingProgressCount.textContent = `${payload.current} / ${payload.total}`;
+    if (cachingProgressDetail) {
+      if (payload.status) {
+        cachingProgressDetail.textContent = payload.status;
+      } else if (payload.title) {
+        cachingProgressDetail.textContent = `Encoding "${payload.title}" (Q${currentQuality} at ${payload.percent}%)...`;
+      }
+    }
+  }
+
   // Optimize Active Wallpaper button (turns green when variant is uncached)
   btnCompressActive.addEventListener('click', async () => {
     if (!activeWallpaper) {
@@ -839,39 +927,122 @@ function setupPerformanceControls() {
     }
   });
 
-  // Compress Entire Library button
+  // Compress Entire Library button (Asynchronous Bounded Multi-Threaded Queue with Dual-Channel Progress)
   btnCompressAll.addEventListener('click', async () => {
     if (wallpapers.length === 0) {
       showToast('No wallpapers in library to compress', 'info');
       return;
     }
 
-    btnCompressAll.disabled = true;
-    const origHtml = btnCompressAll.innerHTML;
-    btnCompressAll.innerHTML = `${Icons.spinner} <span>Encoding Library Variants...</span>`;
-
-    let count = 0;
-    for (const wp of wallpapers) {
-      try {
-        const updated = await invoke('compress_wallpaper', {
-          id: wp.id,
-          qualityLevel: currentQuality,
-          targetFps: currentFps,
-        });
-        const idx = wallpapers.findIndex((w) => w.id === updated.id);
-        if (idx !== -1) wallpapers[idx] = updated;
-        count++;
-      } catch (e) {
-        console.error('Failed to compress ' + wp.title, e);
-      }
+    if (currentQuality === 5) {
+      showToast('Native Q5 represents uncompressed source files', 'info');
+      return;
     }
 
-    btnCompressAll.disabled = false;
-    btnCompressAll.innerHTML = origHtml;
+    const uncachedCount = wallpapers.filter(
+      (w) => !(w.cached_qualities || [5]).includes(currentQuality)
+    ).length;
+
+    if (uncachedCount === 0) {
+      showToast(`All library items already have Q${currentQuality} cached`, 'info');
+      return;
+    }
+
+    btnCompressAll.disabled = true;
+    const origHtml = btnCompressAll.innerHTML;
+    btnCompressAll.innerHTML = `${Icons.spinner} <span>Encoding Variants (Parallel)...</span>`;
+
+    if (cachingProgressContainer) {
+      cachingProgressContainer.style.display = 'block';
+      if (cachingProgressBar) cachingProgressBar.style.width = '0%';
+      if (cachingProgressCount) cachingProgressCount.textContent = `0 / ${uncachedCount}`;
+      if (cachingProgressTitle) cachingProgressTitle.textContent = `Caching Library Variants (Q${currentQuality})...`;
+      if (cachingProgressDetail) cachingProgressDetail.textContent = 'Dispatching concurrent transcoding workers...';
+      if (btnCancelCaching) btnCancelCaching.disabled = false;
+    }
+
+    let pollTimer = null;
+    pollTimer = setInterval(async () => {
+      try {
+        const prog = await invoke('get_caching_progress');
+        if (prog) {
+          updateCachingProgressUI(prog);
+        }
+      } catch (_) {}
+    }, 200);
+
+    try {
+      const res = await invoke('compress_all_wallpapers', {
+        qualityLevel: currentQuality,
+        targetFps: currentFps,
+      });
+
+      // Synchronize library items
+      const refreshed = await invoke('get_wallpapers');
+      wallpapers = refreshed;
+      if (activeWallpaper) {
+        const foundActive = wallpapers.find((w) => w.id === activeWallpaper.id);
+        if (foundActive) activeWallpaper = foundActive;
+      }
+
+      checkVariantCacheState();
+      renderLibrary();
+      await refreshCacheStats();
+
+      if (res && res.cancelled) {
+        showToast(`Batch caching cancelled (${res.success_count} finished)`, 'info');
+      } else {
+        showToast(`Successfully cached Q${currentQuality} for ${res.success_count} wallpaper(s)`, 'success');
+      }
+    } catch (err) {
+      showToast('Batch caching error: ' + err, 'error');
+    } finally {
+      if (pollTimer) clearInterval(pollTimer);
+      if (cachingProgressBar) cachingProgressBar.style.width = '100%';
+      if (cachingProgressCount) cachingProgressCount.textContent = `${uncachedCount} / ${uncachedCount}`;
+      if (cachingProgressDetail) cachingProgressDetail.textContent = 'Batch optimization complete.';
+      btnCompressAll.disabled = false;
+      btnCompressAll.innerHTML = origHtml;
+      checkVariantCacheState();
+      setTimeout(() => {
+        if (cachingProgressContainer) {
+          cachingProgressContainer.style.display = 'none';
+        }
+      }, 2500);
+    }
+  });
+
+  if (btnCancelCaching) {
+    btnCancelCaching.addEventListener('click', async () => {
+      try {
+        await invoke('cancel_batch_compression');
+        if (cachingProgressDetail) {
+          cachingProgressDetail.textContent = 'Cancellation requested, draining workers...';
+        }
+        btnCancelCaching.disabled = true;
+      } catch (err) {
+        console.error('Failed to cancel batch compression:', err);
+      }
+    });
+  }
+
+  // Live streaming events for variant caching progress
+  listen('caching-progress', (event) => {
+    updateCachingProgressUI(event.payload);
+  });
+
+  listen('wallpaper-cached', (event) => {
+    const payload = event.payload;
+    if (!payload) return;
+    const wp = wallpapers.find((w) => w.id === payload.id);
+    if (wp) {
+      if (!wp.cached_qualities) wp.cached_qualities = [5];
+      if (!wp.cached_qualities.includes(payload.quality_level)) {
+        wp.cached_qualities.push(payload.quality_level);
+        wp.cached_qualities.sort();
+      }
+    }
     checkVariantCacheState();
-    renderLibrary();
-    showToast(`Successfully cached variant Q${currentQuality} for ${count} wallpaper(s)`, 'success');
-    await refreshCacheStats();
   });
 }
 
@@ -883,6 +1054,7 @@ async function onQualitySliderChanged(val) {
 
   const profile = QUALITY_PROFILES[val] || QUALITY_PROFILES[5];
   labelQualityVal.textContent = profile.badge;
+  if (playerQualityPill) playerQualityPill.textContent = profile.badge;
   settingQualityTitle.textContent = profile.title;
   settingQualityDesc.textContent = profile.desc;
 
@@ -1006,6 +1178,12 @@ async function loadPerformanceSettings() {
     setPanSelectValue(selectPanY, currentPanY);
     setSpeedSelectValue(selectSpeed, currentSpeed);
     chkHardwareAccel.checked = s.hardware_accel;
+    if (chkInactiveBlack) {
+      chkInactiveBlack.checked = s.inactive_black_screen || false;
+    }
+    if (chkRestartOnResume) {
+      chkRestartOnResume.checked = s.restart_on_resume || false;
+    }
 
     // Restore saved library sort preference
     const savedSort = localStorage.getItem('library_sort') || 'recent';
@@ -1026,6 +1204,8 @@ async function syncPerformanceSettings() {
       pauseOnFullscreen: currentPausePolicy !== 0,
       pausePolicy: currentPausePolicy,
       hardwareAccel: chkHardwareAccel.checked,
+      inactiveBlackScreen: chkInactiveBlack ? chkInactiveBlack.checked : false,
+      restartOnResume: chkRestartOnResume ? chkRestartOnResume.checked : false,
     });
   } catch (err) {
     console.error('Failed to sync performance settings:', err);
@@ -1034,15 +1214,77 @@ async function syncPerformanceSettings() {
 
 // Import & Drag Drop with QOL Blurred Preview + Slick White Loading Line
 function setupImportAndDrop() {
+  async function handleImportFilePaths(paths) {
+    if (!paths || paths.length === 0) return;
+    const addedTemp = [];
+    for (const p of paths) {
+      const filename = p.split('/').pop().replace(/\.[^/.]+$/, '');
+      const tempItem = {
+        id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        title: filename,
+        thumbnail_data: '/src-tauri/icons/icon.png',
+        format: p.split('.').pop() || 'mp4',
+        duration_secs: 0,
+        resolution: 'Importing...',
+        isInstalling: true,
+        cached_qualities: [5],
+      };
+      installingItems.unshift(tempItem);
+      addedTemp.push({ path: p, tempId: tempItem.id, tempItem });
+    }
+    renderLibrary();
+
+    for (const item of addedTemp) {
+      // Extract blurred preview frame dynamically from the video
+      invoke('get_quick_preview', { sourcePath: item.path })
+        .then((previewData) => {
+          if (previewData) {
+            item.tempItem.thumbnail_data = previewData;
+            const thumbEl = document.getElementById(`thumb-img-${item.tempId}`);
+            if (thumbEl) {
+              thumbEl.src = previewData;
+            }
+          }
+        })
+        .catch(() => {});
+
+      try {
+        const imported = await invoke('import_wallpaper', { sourcePath: item.path });
+        installingItems = installingItems.filter((i) => i.id !== item.tempId);
+        wallpapers.unshift(imported);
+
+        const cardEl = document.getElementById(`wp-card-${item.tempId}`);
+        if (cardEl) {
+          const thumb = cardEl.querySelector('.card-thumb');
+          const wrapper = cardEl.querySelector('.card-thumbnail-wrapper');
+          const bar = cardEl.querySelector('.loading-bar-wrapper');
+          const badge = cardEl.querySelector('.badge-installing');
+          if (thumb) thumb.src = getThumbnail(imported);
+          if (wrapper) wrapper.classList.remove('is-installing');
+          if (bar) bar.remove();
+          if (badge) badge.remove();
+        }
+      } catch (err) {
+        console.error('Failed to import ' + item.path, err);
+        showToast('Failed to import: ' + err, 'error');
+        installingItems = installingItems.filter((i) => i.id !== item.tempId);
+      }
+    }
+
+    setTimeout(async () => {
+      renderLibrary();
+      showToast(`Imported ${addedTemp.length} wallpaper(s)`, 'success');
+      await refreshCacheStats();
+    }, 400);
+  }
+
   async function triggerNativeFilePicker() {
     try {
       btnImport.disabled = true;
-      btnImport.innerHTML = `${Icons.spinner} <span>Importing...</span>`;
-      const imported = await invoke('select_and_import_videos');
-      if (imported && imported.length > 0) {
-        await loadLibrary();
-        showToast(`Imported ${imported.length} new wallpaper(s)`, 'success');
-        await refreshCacheStats();
+      btnImport.innerHTML = `${Icons.spinner} <span>Selecting...</span>`;
+      const paths = await invoke('select_video_files');
+      if (paths && paths.length > 0) {
+        await handleImportFilePaths(paths);
       }
     } catch (e) {
       showToast('Error importing video: ' + e, 'error');
@@ -1067,52 +1309,7 @@ function setupImportAndDrop() {
     dropzone.classList.remove('dragover');
     const paths = event.payload?.paths;
     if (paths && paths.length > 0) {
-      const addedTemp = [];
-      for (const p of paths) {
-        const filename = p.split('/').pop().replace(/\.[^/.]+$/, '');
-        const tempItem = {
-          id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-          title: filename,
-          thumbnail_data: '/src-tauri/icons/icon.png',
-          format: p.split('.').pop() || 'mp4',
-          duration_secs: 0,
-          resolution: 'Importing...',
-          isInstalling: true,
-          cached_qualities: [5],
-        };
-        installingItems.unshift(tempItem);
-        addedTemp.push({ path: p, tempId: tempItem.id });
-      }
-      renderLibrary();
-
-      for (const item of addedTemp) {
-        try {
-          const imported = await invoke('import_wallpaper', { sourcePath: item.path });
-          installingItems = installingItems.filter((i) => i.id !== item.tempId);
-          wallpapers.unshift(imported);
-
-          const cardEl = document.getElementById(`wp-card-${item.tempId}`);
-          if (cardEl) {
-            const thumb = cardEl.querySelector('.card-thumb');
-            const wrapper = cardEl.querySelector('.card-thumbnail-wrapper');
-            const bar = cardEl.querySelector('.loading-bar-wrapper');
-            const badge = cardEl.querySelector('.badge-installing');
-            if (thumb) thumb.src = getThumbnail(imported);
-            if (wrapper) wrapper.classList.remove('is-installing');
-            if (bar) bar.remove();
-            if (badge) badge.remove();
-          }
-        } catch (err) {
-          console.error('Failed to import ' + item.path, err);
-          installingItems = installingItems.filter((i) => i.id !== item.tempId);
-        }
-      }
-
-      setTimeout(async () => {
-        renderLibrary();
-        showToast(`Imported ${addedTemp.length} wallpaper(s)`, 'success');
-        await refreshCacheStats();
-      }, 600);
+      await handleImportFilePaths(paths);
     }
   });
 

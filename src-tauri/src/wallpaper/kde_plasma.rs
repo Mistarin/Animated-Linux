@@ -117,10 +117,29 @@ print("Applied successfully to target " + target);
         Ok(())
     }
 
-    fn pause(&self, screen: Option<i32>) -> Result<(), String> {
+    fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
-        let script = format!(
-            r#"
+        if settings.inactive_black_screen {
+            let script = format!(
+                r##"
+var allDesktops = desktops();
+var target = {target_screen};
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    if (target === -1 || d.screen === target) {{
+        d.wallpaperPlugin = "org.kde.color";
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.color", "General");
+        d.writeConfig("Color", "#000000");
+        d.reloadConfig();
+    }}
+}}
+"##,
+                target_screen = target_screen
+            );
+            Self::run_plasma_script(&script)?;
+        } else {
+            let script = format!(
+                r#"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
@@ -132,14 +151,37 @@ for (var i = 0; i < allDesktops.length; i++) {{
     }}
 }}
 "#,
-            target_screen = target_screen
-        );
-        Self::run_plasma_script(&script)?;
+                target_screen = target_screen
+            );
+            Self::run_plasma_script(&script)?;
+        }
         Ok(())
     }
 
-    fn resume(&self, screen: Option<i32>) -> Result<(), String> {
+    fn resume(&self, screen: Option<i32>, settings: &PlaybackSettings, wallpaper: Option<&WallpaperItem>) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let pause_mode = match settings.pause_policy {
+            0 => 3,
+            1 | 2 => 0,
+            3 => 1,
+            _ => 3,
+        };
+
+        if settings.inactive_black_screen {
+            if let Some(wp) = wallpaper {
+                return self.apply(wp, screen, settings);
+            }
+        }
+
+        let restart_script = if settings.restart_on_resume {
+            r#"
+        d.writeConfig("ResumeLastVideo", false);
+        d.writeConfig("LastVideoPosition", 0);
+"#
+        } else {
+            ""
+        };
+
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -148,12 +190,14 @@ for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
-        d.writeConfig("PauseMode", 3);
+{restart_script}        d.writeConfig("PauseMode", {pause_mode});
         d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            restart_script = restart_script,
+            pause_mode = pause_mode
         );
         Self::run_plasma_script(&script)?;
         Ok(())
@@ -222,22 +266,31 @@ for (var i = 0; i < allDesktops.length; i++) {{
         Ok(())
     }
 
-    fn stop(&self, screen: Option<i32>) -> Result<(), String> {
+    fn stop(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let plugin = if settings.inactive_black_screen {
+            "org.kde.color"
+        } else {
+            "org.kde.image"
+        };
         let script = format!(
-            r#"
+            r##"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
-        d.wallpaperPlugin = "org.kde.image";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        d.wallpaperPlugin = "{plugin}";
+        d.currentConfigGroup = Array("Wallpaper", "{plugin}", "General");
+        if ("{plugin}" === "org.kde.color") {{
+            d.writeConfig("Color", "#000000");
+        }}
         d.reloadConfig();
     }}
 }}
-"#,
-            target_screen = target_screen
+"##,
+            target_screen = target_screen,
+            plugin = plugin
         );
         Self::run_plasma_script(&script)?;
         Ok(())

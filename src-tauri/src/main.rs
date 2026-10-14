@@ -16,6 +16,7 @@ use monitors::MonitorDetector;
 use request_manager::RequestManager;
 use tauri::State;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -24,6 +25,7 @@ pub struct AppState {
     pub steam_mgr: Arc<SteamManager>,
     pub workshop_mgr: WorkshopManager,
     pub request_manager: Arc<RequestManager>,
+    pub caching_progress: Arc<std::sync::Mutex<Option<CachingProgressPayload>>>,
 }
 
 #[tauri::command]
@@ -31,7 +33,7 @@ fn get_wallpapers(state: State<'_, AppState>) -> Vec<WallpaperItem> {
     state.wallpaper_mgr.load_library()
 }
 
-fn import_wallpaper_internal(state: &AppState, source_path: &str) -> Result<WallpaperItem, String> {
+fn import_wallpaper_internal(wp_mgr: &WallpaperManager, source_path: &str) -> Result<WallpaperItem, String> {
     let src = Path::new(source_path);
     if !src.exists() {
         return Err(format!("Source file does not exist: {}", source_path));
@@ -41,7 +43,7 @@ fn import_wallpaper_internal(state: &AppState, source_path: &str) -> Result<Wall
     let ext = src.extension().unwrap_or_default().to_string_lossy().to_lowercase();
     let id = format!("wp_{}", uuid_simple());
 
-    let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
+    let wallpapers_dir = wp_mgr.get_storage_dir();
     let thumbs_dir = wallpapers_dir.join("thumbnails");
     let _ = std::fs::create_dir_all(&wallpapers_dir);
     let _ = std::fs::create_dir_all(&thumbs_dir);
@@ -81,20 +83,76 @@ fn import_wallpaper_internal(state: &AppState, source_path: &str) -> Result<Wall
         workshop_id: None,
     };
 
-    let mut library = state.wallpaper_mgr.load_library();
+    let mut library = wp_mgr.load_library();
     library.push(item.clone());
-    state.wallpaper_mgr.save_library(&library)?;
+    wp_mgr.save_library(&library)?;
 
     Ok(item)
 }
 
 #[tauri::command]
-fn import_wallpaper(state: State<'_, AppState>, source_path: String) -> Result<WallpaperItem, String> {
-    import_wallpaper_internal(&state, &source_path)
+async fn import_wallpaper(state: State<'_, AppState>, source_path: String) -> Result<WallpaperItem, String> {
+    let wp_mgr = state.wallpaper_mgr.clone();
+    tokio::task::spawn_blocking(move || {
+        import_wallpaper_internal(&wp_mgr, &source_path)
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?
 }
 
 #[tauri::command]
-fn select_and_import_videos(state: State<'_, AppState>) -> Result<Vec<WallpaperItem>, String> {
+async fn get_quick_preview(source_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let p = Path::new(&source_path);
+        if !p.exists() {
+            return Err("Source file does not exist".to_string());
+        }
+
+        // Fast extraction of preview frame via ffmpeg directly to stdout
+        let out = Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-ss").arg("00:00:01")
+            .arg("-i").arg(&source_path)
+            .arg("-vframes").arg("1")
+            .arg("-s").arg("320x180")
+            .arg("-f").arg("image2")
+            .arg("-c:v").arg("mjpeg")
+            .arg("-")
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if out.status.success() && !out.stdout.is_empty() {
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&out.stdout);
+            Ok(format!("data:image/jpeg;base64,{}", b64))
+        } else {
+            // Fallback: try taking frame at 00:00:00
+            let out2 = Command::new("ffmpeg")
+                .arg("-y")
+                .arg("-ss").arg("00:00:00")
+                .arg("-i").arg(&source_path)
+                .arg("-vframes").arg("1")
+                .arg("-s").arg("320x180")
+                .arg("-f").arg("image2")
+                .arg("-c:v").arg("mjpeg")
+                .arg("-")
+                .output()
+                .map_err(|e| e.to_string())?;
+
+            if out2.status.success() && !out2.stdout.is_empty() {
+                use base64::Engine;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&out2.stdout);
+                Ok(format!("data:image/jpeg;base64,{}", b64))
+            } else {
+                Err("Failed to extract preview frame".to_string())
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Preview task error: {}", e))?
+}
+
+fn pick_video_paths_internal() -> Vec<String> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let mut paths_to_import: Vec<String> = Vec::new();
 
@@ -139,13 +197,23 @@ fn select_and_import_videos(state: State<'_, AppState>) -> Result<Vec<WallpaperI
         }
     }
 
+    paths_to_import
+}
+
+#[tauri::command]
+fn select_video_files() -> Result<Vec<String>, String> {
+    Ok(pick_video_paths_internal())
+}
+
+#[tauri::command]
+fn select_and_import_videos(state: State<'_, AppState>) -> Result<Vec<WallpaperItem>, String> {
+    let paths_to_import = pick_video_paths_internal();
     let mut imported = Vec::new();
     for p in paths_to_import {
-        if let Ok(item) = import_wallpaper_internal(&state, &p) {
+        if let Ok(item) = import_wallpaper_internal(&state.wallpaper_mgr, &p) {
             imported.push(item);
         }
     }
-
     Ok(imported)
 }
 
@@ -252,6 +320,8 @@ fn update_performance_settings(
     pause_on_fullscreen: bool,
     pause_policy: u32,
     hardware_accel: bool,
+    inactive_black_screen: bool,
+    restart_on_resume: bool,
 ) -> Result<PlaybackSettings, String> {
     state.wallpaper_mgr.update_performance_settings(
         quality_level,
@@ -259,7 +329,14 @@ fn update_performance_settings(
         pause_on_fullscreen,
         pause_policy,
         hardware_accel,
+        inactive_black_screen,
+        restart_on_resume,
     )
+}
+
+#[tauri::command]
+fn get_caching_progress(state: State<'_, AppState>) -> Option<CachingProgressPayload> {
+    state.caching_progress.lock().unwrap().clone()
 }
 
 #[tauri::command]
@@ -351,27 +428,50 @@ fn switch_wallpaper_quality(
     Ok(updated)
 }
 
-#[tauri::command]
-fn compress_wallpaper(
-    state: State<'_, AppState>,
-    id: String,
+#[derive(Debug, Clone)]
+struct VariantEncodeResult {
+    variant_path: String,
+    resolution: Option<String>,
+    duration_secs: Option<f64>,
+    thumbnail_data: Option<String>,
+    #[allow(dead_code)]
+    already_cached: bool,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct CachingProgressPayload {
+    pub current: usize,
+    pub total: usize,
+    pub id: String,
+    pub title: String,
+    pub percent: u32,
+    pub status: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct CachingFinishedPayload {
+    pub success_count: usize,
+    pub total: usize,
+    pub cancelled: bool,
+}
+
+static BATCH_CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+fn encode_variant_internal(
+    wallpapers_dir: PathBuf,
+    item_id: String,
+    item_format: String,
+    current_file_path: String,
     quality_level: u32,
     target_fps: u32,
-) -> Result<WallpaperItem, String> {
-    let mut library = state.wallpaper_mgr.load_library();
-    let pos = library
-        .iter()
-        .position(|w| w.id == id)
-        .ok_or_else(|| "Wallpaper not found".to_string())?;
-
-    let item = &mut library[pos];
-    let current_video_path = PathBuf::from(&item.file_path);
+    thumbnail_path: String,
+) -> Result<VariantEncodeResult, String> {
+    let current_video_path = PathBuf::from(&current_file_path);
     if !current_video_path.exists() {
         return Err("Source video file does not exist".to_string());
     }
 
-    let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
-    let orig_backup = wallpapers_dir.join(format!("{}_source.{}", id, item.format));
+    let orig_backup = wallpapers_dir.join(format!("{}_source.{}", item_id, item_format));
 
     // Preserve original source untouched
     if !orig_backup.exists() {
@@ -387,82 +487,163 @@ fn compress_wallpaper(
     let target_variant_path = if quality_level == 5 {
         orig_backup.clone()
     } else {
-        wallpapers_dir.join(format!("{}_q{}.mp4", id, quality_level))
+        wallpapers_dir.join(format!("{}_q{}.mp4", item_id, quality_level))
     };
 
     if quality_level == 5 {
-        item.file_path = orig_backup.to_string_lossy().to_string();
-    } else {
-        // Q4 is 4K (2160p), Q3 is 2K (1440p), Q2 is FULLHD (1080p), Q1 is HD or lower (720p)
-        let (max_height, crf) = match quality_level {
-            1 => (720, "28"),
-            2 => (1080, "24"),
-            3 => (1440, "21"),
-            4 => (2160, "18"),
-            _ => (1080, "24"),
-        };
-
-        let fps = if target_fps > 0 {
-            target_fps
-        } else {
-            match quality_level {
-                1 => 24,
-                2 => 30,
-                3 => 60,
-                4 => 60,
-                _ => 30,
-            }
-        };
-
-        let temp_output = wallpapers_dir.join(format!("{}_temp_q{}.mp4", id, quality_level));
-        let render_node = std::path::Path::new("/dev/dri/renderD128");
-
-        let mut success = false;
-
-        // Fast Hardware Accelerated Encoding via VA-API (Intel/AMD)
-        if render_node.exists() {
-            let vaapi_vf = format!("fps={},format=nv12,hwupload,scale_vaapi=w=-2:h={}", fps, max_height);
-            let status = Command::new("ffmpeg")
-                .arg("-y")
-                .arg("-vaapi_device").arg("/dev/dri/renderD128")
-                .arg("-i").arg(&input_source)
-                .arg("-vf").arg(&vaapi_vf)
-                .arg("-c:v").arg("h264_vaapi")
-                .arg("-qp").arg(crf)
-                .arg("-an")
-                .arg(&temp_output)
-                .status();
-
-            if let Ok(st) = status {
-                if st.success() {
-                    success = true;
-                }
-            }
-        }
-
-        // CPU Fallback via libx264
-        if !success {
-            let vf = format!("scale=-2:{},fps={}", max_height, fps);
-            let status = Command::new("ffmpeg")
-                .arg("-y")
-                .arg("-i").arg(&input_source)
-                .arg("-vf").arg(&vf)
-                .arg("-c:v").arg("libx264")
-                .arg("-preset").arg("veryfast")
-                .arg("-crf").arg(crf)
-                .arg("-an")
-                .arg(&temp_output)
-                .status()
-                .map_err(|e| format!("Failed to invoke ffmpeg: {}", e))?;
-
-            if !status.success() {
-                return Err("ffmpeg failed to compress video".to_string());
-            }
-        }
-
-        let _ = std::fs::rename(&temp_output, &target_variant_path);
-        item.file_path = target_variant_path.to_string_lossy().to_string();
+        return Ok(VariantEncodeResult {
+            variant_path: target_variant_path.to_string_lossy().to_string(),
+            resolution: None,
+            duration_secs: None,
+            thumbnail_data: None,
+            already_cached: true,
+        });
     }
+
+    // Fast short-circuit: if variant already exists on disk and is non-empty, avoid redundant re-encoding
+    if target_variant_path.exists() {
+        if let Ok(meta) = target_variant_path.metadata() {
+            if meta.len() > 0 {
+                return Ok(VariantEncodeResult {
+                    variant_path: target_variant_path.to_string_lossy().to_string(),
+                    resolution: None,
+                    duration_secs: None,
+                    thumbnail_data: None,
+                    already_cached: true,
+                });
+            }
+        }
+    }
+
+    // Q4 is 4K (2160p), Q3 is 2K (1440p), Q2 is FULLHD (1080p), Q1 is HD or lower (720p)
+    let (max_height, crf) = match quality_level {
+        1 => (720, "28"),
+        2 => (1080, "24"),
+        3 => (1440, "21"),
+        4 => (2160, "18"),
+        _ => (1080, "24"),
+    };
+
+    let fps = if target_fps > 0 {
+        target_fps
+    } else {
+        match quality_level {
+            1 => 24,
+            2 => 30,
+            3 => 60,
+            4 => 60,
+            _ => 30,
+        }
+    };
+
+    let temp_output = wallpapers_dir.join(format!("{}_temp_q{}.mp4", item_id, quality_level));
+    let render_node = std::path::Path::new("/dev/dri/renderD128");
+
+    let mut success = false;
+
+    // Fast Hardware Accelerated Encoding via VA-API (Intel / AMD)
+    if render_node.exists() {
+        let vaapi_vf = format!("fps={},format=nv12,hwupload,scale_vaapi=w=-2:h={}", fps, max_height);
+        let status = Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-vaapi_device").arg("/dev/dri/renderD128")
+            .arg("-i").arg(&input_source)
+            .arg("-vf").arg(&vaapi_vf)
+            .arg("-c:v").arg("h264_vaapi")
+            .arg("-qp").arg(crf)
+            .arg("-an")
+            .arg(&temp_output)
+            .status();
+
+        if let Ok(st) = status {
+            if st.success() {
+                success = true;
+            }
+        }
+    }
+
+    // CPU Fallback via libx264 with bounded threads to prevent UI and desktop compositor stutter
+    if !success {
+        let vf = format!("scale=-2:{},fps={}", max_height, fps);
+        let status = Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-i").arg(&input_source)
+            .arg("-vf").arg(&vf)
+            .arg("-c:v").arg("libx264")
+            .arg("-preset").arg("veryfast")
+            .arg("-threads").arg("2")
+            .arg("-crf").arg(crf)
+            .arg("-an")
+            .arg(&temp_output)
+            .status()
+            .map_err(|e| format!("Failed to invoke ffmpeg: {}", e))?;
+
+        if !status.success() {
+            let _ = std::fs::remove_file(&temp_output);
+            return Err("ffmpeg failed to compress video".to_string());
+        }
+    }
+
+    let _ = std::fs::rename(&temp_output, &target_variant_path);
+
+    let resolution = get_video_resolution(&target_variant_path);
+    let duration_secs = get_video_duration(&target_variant_path);
+    let thumb_path = PathBuf::from(&thumbnail_path);
+    let thumbnail_data = if thumb_path.exists() {
+        encode_thumbnail_base64(&thumb_path)
+    } else {
+        None
+    };
+
+    Ok(VariantEncodeResult {
+        variant_path: target_variant_path.to_string_lossy().to_string(),
+        resolution,
+        duration_secs,
+        thumbnail_data,
+        already_cached: false,
+    })
+}
+
+#[tauri::command]
+async fn compress_wallpaper(
+    state: State<'_, AppState>,
+    id: String,
+    quality_level: u32,
+    target_fps: u32,
+) -> Result<WallpaperItem, String> {
+    let (item_id, item_format, item_fpath, item_tpath) = {
+        let library = state.wallpaper_mgr.load_library();
+        let item = library
+            .iter()
+            .find(|w| w.id == id)
+            .ok_or_else(|| "Wallpaper not found".to_string())?;
+        (item.id.clone(), item.format.clone(), item.file_path.clone(), item.thumbnail_path.clone())
+    };
+
+    let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
+
+    let encode_res = tokio::task::spawn_blocking(move || {
+        encode_variant_internal(
+            wallpapers_dir,
+            item_id,
+            item_format,
+            item_fpath,
+            quality_level,
+            target_fps,
+            item_tpath,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task spawn error: {}", e))??;
+
+    let mut library = state.wallpaper_mgr.load_library();
+    let pos = library
+        .iter()
+        .position(|w| w.id == id)
+        .ok_or_else(|| "Wallpaper not found".to_string())?;
+
+    let item = &mut library[pos];
+    item.file_path = encode_res.variant_path;
 
     if !item.cached_qualities.contains(&quality_level) {
         item.cached_qualities.push(quality_level);
@@ -470,32 +651,270 @@ fn compress_wallpaper(
         item.cached_qualities.dedup();
     }
 
-    if let Some(res) = get_video_resolution(&target_variant_path) {
+    if let Some(res) = encode_res.resolution {
         item.resolution = res;
     }
-    if let Some(dur) = get_video_duration(&target_variant_path) {
+    if let Some(dur) = encode_res.duration_secs {
         item.duration_secs = dur;
     }
-    let thumb_path = PathBuf::from(&item.thumbnail_path);
-    if thumb_path.exists() {
-        item.thumbnail_data = encode_thumbnail_base64(&thumb_path);
+    if let Some(tdata) = encode_res.thumbnail_data {
+        item.thumbnail_data = Some(tdata);
     }
 
     let updated = item.clone();
     state.wallpaper_mgr.save_library(&library)?;
 
-    // If active, re-apply
+    // If active, re-apply through RequestManager for thread-safe actor serialization
     let active_id = {
         let active = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
         active.as_ref().map(|w| w.id.clone())
     };
     if let Some(active_id) = active_id {
         if active_id == id {
-            let _ = state.wallpaper_mgr.apply_wallpaper(updated.clone(), None);
+            let req_mgr = state.request_manager.clone();
+            let up = updated.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = req_mgr.apply_wallpaper(up, None).await;
+            });
         }
     }
 
     Ok(updated)
+}
+
+#[tauri::command]
+async fn compress_all_wallpapers(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    quality_level: u32,
+    target_fps: u32,
+) -> Result<CachingFinishedPayload, String> {
+    use tauri::Emitter;
+    use tauri::Manager;
+
+    BATCH_CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+
+    if quality_level == 5 {
+        let payload = CachingFinishedPayload {
+            success_count: 0,
+            total: 0,
+            cancelled: false,
+        };
+        let _ = app.emit("caching-finished", &payload);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.emit("caching-finished", &payload);
+        }
+        return Ok(payload);
+    }
+
+    let library = state.wallpaper_mgr.load_library();
+    let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
+
+    // Identify wallpapers that need encoding or cache recognition
+    let mut to_process: Vec<WallpaperItem> = Vec::new();
+    for item in &library {
+        let variant_path = wallpapers_dir.join(format!("{}_q{}.mp4", item.id, quality_level));
+        let exists = variant_path.exists() && variant_path.metadata().map(|m| m.len() > 0).unwrap_or(false);
+        if !exists || !item.cached_qualities.contains(&quality_level) {
+            to_process.push(item.clone());
+        }
+    }
+
+    let total = to_process.len();
+    if total == 0 {
+        let payload = CachingFinishedPayload {
+            success_count: 0,
+            total: 0,
+            cancelled: false,
+        };
+        let _ = app.emit("caching-finished", &payload);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.emit("caching-finished", &payload);
+        }
+        return Ok(payload);
+    }
+
+    // Use bounded concurrency of 2 parallel transcode workers to keep desktop responsive
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
+    let finished_counter = Arc::new(AtomicUsize::new(0));
+    let success_counter = Arc::new(AtomicUsize::new(0));
+    let caching_progress_state = state.caching_progress.clone();
+
+    // Set initial 0 / total progress
+    {
+        let init_payload = CachingProgressPayload {
+            current: 0,
+            total,
+            id: String::new(),
+            title: String::new(),
+            percent: 0,
+            status: "Starting parallel variant caching...".to_string(),
+        };
+        *caching_progress_state.lock().unwrap() = Some(init_payload.clone());
+        let _ = app.emit("caching-progress", &init_payload);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.emit("caching-progress", &init_payload);
+        }
+    }
+
+    let mut handles = Vec::new();
+
+    for item in to_process {
+        let sem = semaphore.clone();
+        let app_handle = app.clone();
+        let wp_dir = wallpapers_dir.clone();
+        let finished = finished_counter.clone();
+        let success = success_counter.clone();
+        let item_clone = item.clone();
+        let progress_state = caching_progress_state.clone();
+
+        let handle = tokio::spawn(async move {
+            if BATCH_CANCEL_REQUESTED.load(Ordering::SeqCst) {
+                return None;
+            }
+
+            let _permit = match sem.acquire().await {
+                Ok(p) => p,
+                Err(_) => return None,
+            };
+
+            if BATCH_CANCEL_REQUESTED.load(Ordering::SeqCst) {
+                return None;
+            }
+
+            let cur_finished = finished.load(Ordering::SeqCst);
+            let percent = ((cur_finished as f32 / total as f32) * 100.0) as u32;
+
+            let start_payload = CachingProgressPayload {
+                current: cur_finished,
+                total,
+                id: item_clone.id.clone(),
+                title: item_clone.title.clone(),
+                percent,
+                status: format!("Encoding \"{}\"...", item_clone.title),
+            };
+            *progress_state.lock().unwrap() = Some(start_payload.clone());
+            let _ = app_handle.emit("caching-progress", &start_payload);
+            if let Some(w) = app_handle.get_webview_window("main") {
+                let _ = w.emit("caching-progress", &start_payload);
+            }
+
+            let res = tokio::task::spawn_blocking({
+                let id = item_clone.id.clone();
+                let fmt = item_clone.format.clone();
+                let fpath = item_clone.file_path.clone();
+                let tpath = item_clone.thumbnail_path.clone();
+                move || {
+                    encode_variant_internal(
+                        wp_dir,
+                        id,
+                        fmt,
+                        fpath,
+                        quality_level,
+                        target_fps,
+                        tpath,
+                    )
+                }
+            }).await;
+
+            let new_finished = finished.fetch_add(1, Ordering::SeqCst) + 1;
+            let new_percent = ((new_finished as f32 / total as f32) * 100.0) as u32;
+
+            let item_res = match res {
+                Ok(Ok(encode_res)) => {
+                    success.fetch_add(1, Ordering::SeqCst);
+                    let _ = app_handle.emit("wallpaper-cached", serde_json::json!({
+                        "id": item_clone.id,
+                        "quality_level": quality_level
+                    }));
+                    if let Some(w) = app_handle.get_webview_window("main") {
+                        let _ = w.emit("wallpaper-cached", serde_json::json!({
+                            "id": item_clone.id,
+                            "quality_level": quality_level
+                        }));
+                    }
+                    Some((item_clone.id.clone(), encode_res))
+                }
+                _ => None,
+            };
+
+            let finish_payload = CachingProgressPayload {
+                current: new_finished,
+                total,
+                id: item_clone.id.clone(),
+                title: item_clone.title.clone(),
+                percent: new_percent,
+                status: if new_finished == total {
+                    "All items completed".to_string()
+                } else {
+                    format!("Completed \"{}\"", item_clone.title)
+                },
+            };
+            *progress_state.lock().unwrap() = Some(finish_payload.clone());
+            let _ = app_handle.emit("caching-progress", &finish_payload);
+            if let Some(w) = app_handle.get_webview_window("main") {
+                let _ = w.emit("caching-progress", &finish_payload);
+            }
+
+            item_res
+        });
+
+        handles.push(handle);
+    }
+
+    let mut encoded_results = Vec::new();
+    for h in handles {
+        if let Ok(Some(res)) = h.await {
+            encoded_results.push(res);
+        }
+    }
+
+    let cancelled = BATCH_CANCEL_REQUESTED.load(Ordering::SeqCst);
+    let success_count = success_counter.load(Ordering::SeqCst);
+
+    // Batch update library
+    if !encoded_results.is_empty() {
+        let mut lib = state.wallpaper_mgr.load_library();
+        for (id, encode_res) in encoded_results {
+            if let Some(it) = lib.iter_mut().find(|w| w.id == id) {
+                if !it.cached_qualities.contains(&quality_level) {
+                    it.cached_qualities.push(quality_level);
+                    it.cached_qualities.sort();
+                    it.cached_qualities.dedup();
+                }
+                if let Some(res) = encode_res.resolution {
+                    it.resolution = res;
+                }
+                if let Some(dur) = encode_res.duration_secs {
+                    it.duration_secs = dur;
+                }
+                if let Some(tdata) = encode_res.thumbnail_data {
+                    it.thumbnail_data = Some(tdata);
+                }
+            }
+        }
+        let _ = state.wallpaper_mgr.save_library(&lib);
+    }
+
+    *caching_progress_state.lock().unwrap() = None;
+
+    let payload = CachingFinishedPayload {
+        success_count,
+        total,
+        cancelled,
+    };
+    let _ = app.emit("caching-finished", &payload);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.emit("caching-finished", &payload);
+    }
+
+    Ok(payload)
+}
+
+#[tauri::command]
+fn cancel_batch_compression() -> Result<(), String> {
+    BATCH_CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -577,45 +996,54 @@ fn open_storage_dir(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_cache_stats(state: State<'_, AppState>) -> Result<CacheStats, String> {
+async fn get_cache_stats(state: State<'_, AppState>) -> Result<CacheStats, String> {
     let dir = state.wallpaper_mgr.get_storage_dir();
-    let mut count = 0;
-    let mut bytes = 0;
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
-                if fname.contains("_q") && fname.ends_with(".mp4") {
-                    count += 1;
-                    if let Ok(meta) = entry.metadata() {
-                        bytes += meta.len();
+    tokio::task::spawn_blocking(move || {
+        let mut count = 0;
+        let mut bytes = 0;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                    if fname.contains("_q") && fname.ends_with(".mp4") {
+                        count += 1;
+                        if let Ok(meta) = entry.metadata() {
+                            bytes += meta.len();
+                        }
                     }
                 }
             }
         }
-    }
-    Ok(CacheStats {
-        cached_variants_count: count,
-        total_cache_bytes: bytes,
+        Ok(CacheStats {
+            cached_variants_count: count,
+            total_cache_bytes: bytes,
+        })
     })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?
 }
 
 #[tauri::command]
-fn clear_variant_cache(state: State<'_, AppState>) -> Result<usize, String> {
+async fn clear_variant_cache(state: State<'_, AppState>) -> Result<usize, String> {
     let dir = state.wallpaper_mgr.get_storage_dir();
-    let mut deleted = 0;
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
-                if fname.contains("_q") && fname.ends_with(".mp4") {
-                    if std::fs::remove_file(&path).is_ok() {
-                        deleted += 1;
+    let deleted = tokio::task::spawn_blocking(move || {
+        let mut del_count = 0;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
+                    if fname.contains("_q") && fname.ends_with(".mp4") {
+                        if std::fs::remove_file(&path).is_ok() {
+                            del_count += 1;
+                        }
                     }
                 }
             }
         }
-    }
+        del_count
+    })
+    .await
+    .map_err(|e| format!("Task error: {}", e))?;
 
     let mut library = state.wallpaper_mgr.load_library();
     for item in &mut library {
@@ -838,11 +1266,14 @@ fn main() {
     let workshop_mgr = WorkshopManager::new();
     let request_manager = Arc::new(RequestManager::new(wallpaper_mgr.clone()));
 
+    let caching_progress = Arc::new(std::sync::Mutex::new(None));
+
     let app_state = AppState {
         wallpaper_mgr: wallpaper_mgr.clone(),
         steam_mgr: steam_mgr.clone(),
         workshop_mgr,
         request_manager: request_manager.clone(),
+        caching_progress,
     };
 
     tauri::Builder::default()
@@ -885,6 +1316,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_wallpapers,
             import_wallpaper,
+            get_quick_preview,
+            select_video_files,
             select_and_import_videos,
             delete_wallpaper,
             rename_wallpaper,
@@ -894,7 +1327,10 @@ fn main() {
             set_playback_state,
             get_performance_settings,
             update_performance_settings,
+            get_caching_progress,
             compress_wallpaper,
+            compress_all_wallpapers,
+            cancel_batch_compression,
             switch_wallpaper_quality,
             set_video_geometry,
             get_monitors,

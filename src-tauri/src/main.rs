@@ -273,6 +273,19 @@ async fn set_video_geometry(
 }
 
 #[tauri::command]
+fn get_wallpaper_backend(state: State<'_, AppState>) -> String {
+    state.wallpaper_mgr.get_active_backend_type()
+}
+
+#[tauri::command]
+async fn set_wallpaper_backend(
+    state: State<'_, AppState>,
+    backend: String,
+) -> Result<(), String> {
+    state.request_manager.switch_backend(backend).await
+}
+
+#[tauri::command]
 fn switch_wallpaper_quality(
     state: State<'_, AppState>,
     id: String,
@@ -785,7 +798,9 @@ fn main() {
             get_cache_stats,
             clear_variant_cache,
             get_autostart_status,
-            set_autostart
+            set_autostart,
+            get_wallpaper_backend,
+            set_wallpaper_backend
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherPaper tauri application");

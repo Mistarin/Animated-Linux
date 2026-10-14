@@ -204,6 +204,7 @@ async function init() {
   setupKeyboardShortcuts();
   setupStorageControls();
   setupAutostartControls();
+  setupBackendControls();
   setupPlayerInfoJump();
   setupDeleteModal();
 
@@ -1426,6 +1427,50 @@ async function setupAutostartControls() {
       try {
         const isAutostart = await invoke('get_autostart_status');
         updateAutostartUi(isAutostart);
+      } catch (_) {}
+    }
+  });
+}
+
+// Wallpaper Engine Backend Controls
+async function setupBackendControls() {
+  if (!settingBackend) return;
+  const labelActiveBackend = document.getElementById('label-active-backend');
+
+  const updateBackendLabel = (backend) => {
+    if (labelActiveBackend) {
+      if (backend === 'mpv') {
+        labelActiveBackend.textContent = 'MPV Zero-Copy DMA-BUF Engine';
+        labelActiveBackend.style.color = '#10b981';
+      } else {
+        labelActiveBackend.textContent = 'KDE Plasma 6 Native Backend';
+        labelActiveBackend.style.color = 'var(--text-primary)';
+      }
+    }
+  };
+
+  try {
+    const currentBackend = await invoke('get_wallpaper_backend');
+    settingBackend.value = currentBackend;
+    updateBackendLabel(currentBackend);
+  } catch (err) {
+    console.error('Failed to query current wallpaper backend:', err);
+  }
+
+  settingBackend.addEventListener('change', async (e) => {
+    const selected = e.target.value;
+    try {
+      showToast('Switching wallpaper engine backend...', 'info');
+      await invoke('set_wallpaper_backend', { backend: selected });
+      updateBackendLabel(selected);
+      const name = selected === 'mpv' ? 'MPV Zero-Copy DMA-BUF Engine' : 'KDE Plasma 6 Native Backend';
+      showToast(`Wallpaper engine switched to ${name}`, 'success');
+    } catch (err) {
+      showToast(`Failed to switch engine: ${err}`, 'error');
+      try {
+        const current = await invoke('get_wallpaper_backend');
+        settingBackend.value = current;
+        updateBackendLabel(current);
       } catch (_) {}
     }
   });

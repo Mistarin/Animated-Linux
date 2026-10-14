@@ -47,6 +47,7 @@ pub fn resolve_app_storage_dir() -> PathBuf {
 pub struct WallpaperManager {
     plasma_backend: KdePlasmaBackend,
     mpv_backend: MpvBackend,
+    active_backend_type: Mutex<String>,
     pub current_settings: Mutex<PlaybackSettings>,
     pub active_wallpaper: Mutex<Option<WallpaperItem>>,
     storage_dir: PathBuf,
@@ -98,9 +99,18 @@ impl WallpaperManager {
             None
         };
 
+        let backend_path = storage_dir.join("backend.json");
+        let initial_backend = if let Ok(s) = std::fs::read_to_string(&backend_path) {
+            let t = s.trim().to_lowercase();
+            if t == "mpv" { "mpv".to_string() } else { "kde".to_string() }
+        } else {
+            "kde".to_string()
+        };
+
         Self {
             plasma_backend: KdePlasmaBackend::new(),
             mpv_backend: MpvBackend::new(),
+            active_backend_type: Mutex::new(initial_backend),
             current_settings: Mutex::new(PlaybackSettings::default()),
             active_wallpaper: Mutex::new(restored_active),
             storage_dir,
@@ -112,12 +122,57 @@ impl WallpaperManager {
         self.storage_dir.clone()
     }
 
+    pub fn get_active_backend_type(&self) -> String {
+        self.active_backend_type.lock().unwrap().clone()
+    }
+
     pub fn get_active_backend(&self) -> &dyn WallpaperBackend {
-        if self.plasma_backend.is_available() {
+        let b = self.active_backend_type.lock().unwrap();
+        if *b == "mpv" && self.mpv_backend.is_available() {
+            &self.mpv_backend
+        } else if self.plasma_backend.is_available() {
             &self.plasma_backend
         } else {
             &self.mpv_backend
         }
+    }
+
+    pub fn switch_backend(&self, target_backend: &str) -> Result<(), String> {
+        let normalized = if target_backend.to_lowercase().contains("mpv") {
+            "mpv"
+        } else {
+            "kde"
+        };
+
+        {
+            let current = self.active_backend_type.lock().unwrap();
+            if *current == normalized {
+                return Ok(());
+            }
+        }
+
+        // 1. Cleanly stop old backend
+        let old_backend = self.get_active_backend();
+        println!("[AnimatedLinux] Switching from {} to {} backend", old_backend.name(), normalized);
+        let _ = old_backend.stop(None);
+
+        // 2. Persist new selection
+        {
+            let mut lock = self.active_backend_type.lock().unwrap();
+            *lock = normalized.to_string();
+        }
+        let _ = std::fs::write(self.storage_dir.join("backend.json"), normalized);
+
+        // 3. Re-apply active wallpaper to new backend if one was running
+        let active = self.active_wallpaper.lock().unwrap().clone();
+        if let Some(wallpaper) = active {
+            let settings = self.current_settings.lock().unwrap().clone();
+            let new_backend = self.get_active_backend();
+            println!("[AnimatedLinux] Applying active wallpaper to {}", new_backend.name());
+            new_backend.apply(&wallpaper, None, &settings)?;
+        }
+
+        Ok(())
     }
 
     pub fn apply_wallpaper(&self, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
@@ -203,8 +258,8 @@ impl WallpaperManager {
     }
 
     pub fn stop(&self) -> Result<(), String> {
-        let backend = self.get_active_backend();
-        backend.stop(None)?;
+        let _ = self.mpv_backend.stop(None);
+        let _ = self.plasma_backend.stop(None);
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
         Ok(())

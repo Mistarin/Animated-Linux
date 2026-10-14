@@ -42,6 +42,10 @@ pub enum ActionRequest {
         pan_y: f32,
         responder: oneshot::Sender<Result<(), String>>,
     },
+    SwitchBackend {
+        backend: String,
+        responder: oneshot::Sender<Result<(), String>>,
+    },
     SafeQuit {
         app_handle: AppHandle,
         responder: oneshot::Sender<Result<(), String>>,
@@ -83,6 +87,10 @@ impl RequestManager {
                     }
                     ActionRequest::SetGeometry { fill_mode, pan_x, pan_y, responder } => {
                         let res = wallpaper_mgr.set_geometry(fill_mode, pan_x, pan_y);
+                        let _ = responder.send(res);
+                    }
+                    ActionRequest::SwitchBackend { backend, responder } => {
+                        let res = wallpaper_mgr.switch_backend(&backend);
                         let _ = responder.send(res);
                     }
                     ActionRequest::SafeQuit { app_handle, responder } => {
@@ -138,6 +146,15 @@ impl RequestManager {
             .await
             .map_err(|e| format!("Failed to enqueue SetGeometry request: {}", e))?;
         receiver.await.map_err(|e| format!("Failed to receive SetGeometry response: {}", e))?
+    }
+
+    pub async fn switch_backend(&self, backend: String) -> Result<(), String> {
+        let (responder, receiver) = oneshot::channel();
+        self.sender
+            .send(ActionRequest::SwitchBackend { backend, responder })
+            .await
+            .map_err(|e| format!("Failed to enqueue SwitchBackend request: {}", e))?;
+        receiver.await.map_err(|e| format!("Failed to receive SwitchBackend response: {}", e))?
     }
 
     pub async fn safe_quit(&self, app_handle: AppHandle) -> Result<(), String> {

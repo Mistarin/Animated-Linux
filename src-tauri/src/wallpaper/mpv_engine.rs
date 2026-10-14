@@ -3,6 +3,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 
 const MPV_SOCKET: &str = "/tmp/aetherpaper-mpv.sock";
 
@@ -17,6 +18,47 @@ impl MpvBackend {
         }
     }
 
+    pub fn find_mpvpaper_bin() -> Option<PathBuf> {
+        // 1. Check project bin/mpvpaper
+        if let Ok(cwd) = std::env::current_dir() {
+            let p = cwd.join("bin").join("mpvpaper");
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let p = parent.join("bin").join("mpvpaper");
+                if p.exists() {
+                    return Some(p);
+                }
+                if let Some(grandparent) = parent.parent() {
+                    let p = grandparent.join("bin").join("mpvpaper");
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+        // 2. Check ~/.local/bin/mpvpaper
+        if let Some(home) = dirs::home_dir() {
+            let p = home.join(".local").join("bin").join("mpvpaper");
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        // 3. Check system PATH
+        if let Ok(output) = Command::new("which").arg("mpvpaper").output() {
+            if output.status.success() {
+                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    return Some(PathBuf::from(path_str));
+                }
+            }
+        }
+        None
+    }
+
     fn send_ipc_command(command: &str) -> Result<(), String> {
         let mut stream = UnixStream::connect(MPV_SOCKET)
             .map_err(|e| format!("Could not connect to mpv socket: {}", e))?;
@@ -28,105 +70,201 @@ impl MpvBackend {
 
 impl WallpaperBackend for MpvBackend {
     fn name(&self) -> &'static str {
-        "MPV Hardware Accelerated Engine"
+        "MPV Zero-Copy Engine"
     }
 
     fn is_available(&self) -> bool {
-        Command::new("which").arg("mpv").output().map(|o| o.status.success()).unwrap_or(false)
+        Self::find_mpvpaper_bin().is_some()
+            || Command::new("which").arg("mpv").output().map(|o| o.status.success()).unwrap_or(false)
     }
 
-    fn apply(&self, wallpaper: &WallpaperItem, _screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
+    fn apply(&self, wallpaper: &WallpaperItem, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let mut proc_lock = self.process.lock().unwrap();
 
-        // Kill existing mpv if running
+        // Kill existing mpv/mpvpaper if running
         if let Some(mut child) = proc_lock.take() {
             let _ = child.kill();
+            let _ = child.wait();
         }
 
         let _ = std::fs::remove_file(MPV_SOCKET);
 
-        let mute_flag = if settings.is_muted { "yes" } else { "no" };
-        let volume_str = settings.volume.to_string();
-        let speed_str = settings.speed.to_string();
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        let mpvpaper_bin = Self::find_mpvpaper_bin();
 
-        let mut cmd = Command::new("mpv");
-        cmd.arg(&wallpaper.file_path)
-            .arg("--loop=inf")
-            .arg("--no-audio")
-            .arg(format!("--mute={}", mute_flag))
-            .arg(format!("--volume={}", volume_str))
-            .arg(format!("--speed={}", speed_str))
-            .arg(format!("--input-ipc-server={}", MPV_SOCKET))
-            .arg("--wid=0");
+        let child = if is_wayland && mpvpaper_bin.is_some() {
+            let bin = mpvpaper_bin.unwrap();
+            let mut cmd = Command::new(bin);
 
-        if settings.hardware_accel {
-            cmd.arg("--hwdec=auto-safe");
+            // Layer: bottom places the wallpaper directly beneath application windows and above desktop background
+            cmd.arg("-l").arg("bottom");
+
+            // Automatic pause policies for Wayland compositors
+            if settings.pause_on_fullscreen {
+                match settings.pause_policy {
+                    1 => { cmd.arg("-p").arg("-a").arg("FULL"); }
+                    2 => { cmd.arg("-p").arg("-a").arg("MAX"); }
+                    _ => {}
+                }
+            }
+
+            // Build space-separated MPV options for mpvpaper -o
+            let mut mpv_opts = Vec::new();
+            if settings.hardware_accel {
+                mpv_opts.push("hwdec=vaapi".to_string());
+            } else {
+                mpv_opts.push("hwdec=no".to_string());
+            }
+
+            mpv_opts.push("loop=inf".to_string());
+            mpv_opts.push(format!("input-ipc-server={}", MPV_SOCKET));
+            mpv_opts.push(format!("mute={}", if settings.is_muted { "yes" } else { "no" }));
+            mpv_opts.push(format!("volume={}", settings.volume));
+            mpv_opts.push(format!("speed={}", settings.speed));
+
+            if settings.target_fps > 0 {
+                mpv_opts.push(format!("vf=fps={}", settings.target_fps));
+                mpv_opts.push(format!("override-display-fps={}", settings.target_fps));
+            }
+
+            // Scaling and render fidelity
+            match settings.quality_level {
+                1 => {
+                    mpv_opts.push("scale=bilinear".to_string());
+                    mpv_opts.push("dscale=bilinear".to_string());
+                    mpv_opts.push("cscale=bilinear".to_string());
+                    mpv_opts.push("vd-lavc-fast".to_string());
+                    mpv_opts.push("vd-lavc-skiploopfilter=all".to_string());
+                    mpv_opts.push("deband=no".to_string());
+                    mpv_opts.push("dither=no".to_string());
+                }
+                2 => {
+                    mpv_opts.push("scale=bilinear".to_string());
+                    mpv_opts.push("vd-lavc-fast".to_string());
+                    mpv_opts.push("deband=no".to_string());
+                }
+                3 => {
+                    mpv_opts.push("scale=spline36".to_string());
+                }
+                4 => {
+                    mpv_opts.push("scale=spline36".to_string());
+                    mpv_opts.push("deband=yes".to_string());
+                }
+                5 => {
+                    mpv_opts.push("scale=ewa_lanczossharp".to_string());
+                    mpv_opts.push("deband=yes".to_string());
+                }
+                _ => {}
+            }
+
+            // Geometry and aspect ratio
+            match settings.fill_mode {
+                0 => { mpv_opts.push("keepaspect=no".to_string()); }
+                1 => {
+                    mpv_opts.push("keepaspect=yes".to_string());
+                    mpv_opts.push("panscan=0.0".to_string());
+                }
+                2 => {
+                    mpv_opts.push("keepaspect=yes".to_string());
+                    mpv_opts.push("panscan=1.0".to_string());
+                }
+                3 => {
+                    mpv_opts.push("keepaspect=yes".to_string());
+                    mpv_opts.push("panscan=0.0".to_string());
+                    mpv_opts.push("video-unscaled=yes".to_string());
+                }
+                _ => {}
+            }
+
+            mpv_opts.push(format!("video-pan-x={}", settings.pan_x));
+            mpv_opts.push(format!("video-pan-y={}", settings.pan_y));
+
+            cmd.arg("-o").arg(mpv_opts.join(" "));
+
+            // Target output: '*' spans all connected Wayland outputs
+            let target_output = if let Some(_s) = screen {
+                "*".to_string()
+            } else {
+                "*".to_string()
+            };
+            cmd.arg(target_output);
+            cmd.arg(&wallpaper.file_path);
+
+            cmd.spawn().map_err(|e| format!("Failed to start mpvpaper: {}", e))?
         } else {
-            cmd.arg("--hwdec=no");
-        }
+            // Standalone MPV fallback (X11 / embedded window)
+            let mute_flag = if settings.is_muted { "yes" } else { "no" };
+            let volume_str = settings.volume.to_string();
+            let speed_str = settings.speed.to_string();
 
-        // Optimized video output:
-        // On Wayland, dmabuf-wayland provides zero-copy direct DRM scanout to KWin compositor,
-        // dropping CPU usage by over 50% and RAM by 35%. Falls back gracefully to gpu-next and gpu.
-        if std::env::var("WAYLAND_DISPLAY").is_ok() {
-            cmd.arg("--vo=dmabuf-wayland,gpu-next,gpu");
-        } else {
-            cmd.arg("--vo=gpu-next,gpu");
-        }
+            let mut cmd = Command::new("mpv");
+            cmd.arg(&wallpaper.file_path)
+                .arg("--loop=inf")
+                .arg("--no-audio")
+                .arg(format!("--mute={}", mute_flag))
+                .arg(format!("--volume={}", volume_str))
+                .arg(format!("--speed={}", speed_str))
+                .arg(format!("--input-ipc-server={}", MPV_SOCKET))
+                .arg("--wid=0");
 
-        // FPS limiting to drastically reduce CPU/GPU draw cycles
-        if settings.target_fps > 0 {
-            cmd.arg(format!("--vf=fps={}", settings.target_fps));
-            cmd.arg(format!("--override-display-fps={}", settings.target_fps));
-        }
+            if settings.hardware_accel {
+                cmd.arg("--hwdec=auto-safe");
+            } else {
+                cmd.arg("--hwdec=no");
+            }
 
-        // Performance scaling & quality profiles
-        match settings.quality_level {
-            1 => {
-                // Max Performance: lowest GPU load, fast bilinear scaling, skip loop filter
-                cmd.arg("--scale=bilinear")
-                    .arg("--dscale=bilinear")
-                    .arg("--cscale=bilinear")
-                    .arg("--vd-lavc-fast")
-                    .arg("--vd-lavc-skiploopfilter=all")
-                    .arg("--deband=no")
-                    .arg("--dither=no");
+            if is_wayland {
+                cmd.arg("--vo=dmabuf-wayland,gpu-next,gpu");
+            } else {
+                cmd.arg("--vo=gpu-next,gpu");
             }
-            2 => {
-                // Economy: fast bilinear scaling, lavc fast
-                cmd.arg("--scale=bilinear")
-                    .arg("--vd-lavc-fast")
-                    .arg("--deband=no");
-            }
-            3 => {
-                // Balanced: smooth spline36, normal filtering
-                cmd.arg("--scale=spline36");
-            }
-            4 => {
-                // High Fidelity: high quality spline36 with debanding
-                cmd.arg("--scale=spline36")
-                    .arg("--deband=yes");
-            }
-            5 => {
-                // Raw / Max Quality: ewa_lanczossharp with debanding
-                cmd.arg("--scale=ewa_lanczossharp")
-                    .arg("--deband=yes");
-            }
-            _ => {}
-        }
 
-        // Geometry: fill mode and pan offsets
-        match settings.fill_mode {
-            0 => { cmd.arg("--keepaspect=no"); }
-            1 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0"); }
-            2 => { cmd.arg("--keepaspect=yes").arg("--panscan=1.0"); }
-            3 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0").arg("--video-unscaled=yes"); }
-            _ => {}
-        }
-        cmd.arg(format!("--video-pan-x={}", settings.pan_x));
-        cmd.arg(format!("--video-pan-y={}", settings.pan_y));
+            if settings.target_fps > 0 {
+                cmd.arg(format!("--vf=fps={}", settings.target_fps));
+                cmd.arg(format!("--override-display-fps={}", settings.target_fps));
+            }
 
-        let child = cmd.spawn().map_err(|e| format!("Failed to start mpv: {}", e))?;
+            match settings.quality_level {
+                1 => {
+                    cmd.arg("--scale=bilinear")
+                        .arg("--dscale=bilinear")
+                        .arg("--cscale=bilinear")
+                        .arg("--vd-lavc-fast")
+                        .arg("--vd-lavc-skiploopfilter=all")
+                        .arg("--deband=no")
+                        .arg("--dither=no");
+                }
+                2 => {
+                    cmd.arg("--scale=bilinear")
+                        .arg("--vd-lavc-fast")
+                        .arg("--deband=no");
+                }
+                3 => {
+                    cmd.arg("--scale=spline36");
+                }
+                4 => {
+                    cmd.arg("--scale=spline36")
+                        .arg("--deband=yes");
+                }
+                5 => {
+                    cmd.arg("--scale=ewa_lanczossharp")
+                        .arg("--deband=yes");
+                }
+                _ => {}
+            }
+
+            match settings.fill_mode {
+                0 => { cmd.arg("--keepaspect=no"); }
+                1 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0"); }
+                2 => { cmd.arg("--keepaspect=yes").arg("--panscan=1.0"); }
+                3 => { cmd.arg("--keepaspect=yes").arg("--panscan=0.0").arg("--video-unscaled=yes"); }
+                _ => {}
+            }
+            cmd.arg(format!("--video-pan-x={}", settings.pan_x));
+            cmd.arg(format!("--video-pan-y={}", settings.pan_y));
+
+            cmd.spawn().map_err(|e| format!("Failed to start mpv: {}", e))?
+        };
 
         *proc_lock = Some(child);
         Ok(())
@@ -168,6 +306,7 @@ impl WallpaperBackend for MpvBackend {
         let mut proc_lock = self.process.lock().unwrap();
         if let Some(mut child) = proc_lock.take() {
             let _ = child.kill();
+            let _ = child.wait();
         }
         let _ = std::fs::remove_file(MPV_SOCKET);
         Ok(())

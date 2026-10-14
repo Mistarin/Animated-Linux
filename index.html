@@ -193,11 +193,11 @@
           <div>
             <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Wallpaper Engine Backend</h3>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
-              Active: <strong>KDE Plasma 6 Native D-Bus Engine</strong> (Zero-overhead, hardware accelerated).
+              Active: <strong id="label-active-backend">KDE Plasma 6 Native Backend</strong>
             </p>
-            <select id="setting-backend" style="width: 280px;">
-              <option value="kde">KDE Plasma 6 Native Backend</option>
-              <option value="mpv">MPV Hardware-Accelerated Engine</option>
+            <select id="setting-backend" style="width: 360px;">
+              <option value="kde">KDE Plasma 6 Native Backend (QtMultimedia / PlasmaShell)</option>
+              <option value="mpv">MPV Zero-Copy DMA-BUF Engine (mpvpaper / 5% CPU)</option>
             </select>
           </div>
 

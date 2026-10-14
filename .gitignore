@@ -22,6 +22,7 @@ pnpm-debug.log*
 /wallpapers/thumbnails/*.png
 /wallpapers/library.json
 /wallpapers/active.json
+/wallpapers/backend.json
 
 # Environment & IDE
 .env

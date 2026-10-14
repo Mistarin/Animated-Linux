@@ -1,9 +1,11 @@
 pub mod backend;
 pub mod kde_plasma;
+pub mod kde_mpv;
 pub mod mpv_engine;
 
 use backend::{PlaybackSettings, WallpaperBackend, WallpaperItem};
 use kde_plasma::KdePlasmaBackend;
+use kde_mpv::KdePlasmaMpvBackend;
 use mpv_engine::MpvBackend;
 use std::sync::Mutex;
 use std::path::{Path, PathBuf};
@@ -46,6 +48,7 @@ pub fn resolve_app_storage_dir() -> PathBuf {
 
 pub struct WallpaperManager {
     plasma_backend: KdePlasmaBackend,
+    plasma_mpv_backend: KdePlasmaMpvBackend,
     mpv_backend: MpvBackend,
     active_backend_type: Mutex<String>,
     pub current_settings: Mutex<PlaybackSettings>,
@@ -102,13 +105,20 @@ impl WallpaperManager {
         let backend_path = storage_dir.join("backend.json");
         let initial_backend = if let Ok(s) = std::fs::read_to_string(&backend_path) {
             let t = s.trim().to_lowercase();
-            if t == "mpv" { "mpv".to_string() } else { "kde".to_string() }
+            if t == "kde_mpv" || t == "plasma_mpv" {
+                "kde_mpv".to_string()
+            } else if t == "mpv" || t == "mpvpaper" {
+                "mpv".to_string()
+            } else {
+                "kde".to_string()
+            }
         } else {
-            "kde".to_string()
+            "kde_mpv".to_string()
         };
 
         Self {
             plasma_backend: KdePlasmaBackend::new(),
+            plasma_mpv_backend: KdePlasmaMpvBackend::new(),
             mpv_backend: MpvBackend::new(),
             active_backend_type: Mutex::new(initial_backend),
             current_settings: Mutex::new(PlaybackSettings::default()),
@@ -128,17 +138,42 @@ impl WallpaperManager {
 
     pub fn get_active_backend(&self) -> &dyn WallpaperBackend {
         let b = self.active_backend_type.lock().unwrap();
-        if *b == "mpv" && self.mpv_backend.is_available() {
-            &self.mpv_backend
-        } else if self.plasma_backend.is_available() {
-            &self.plasma_backend
-        } else {
-            &self.mpv_backend
+        match b.as_str() {
+            "kde_mpv" => {
+                if self.plasma_mpv_backend.is_available() {
+                    &self.plasma_mpv_backend
+                } else if self.plasma_backend.is_available() {
+                    &self.plasma_backend
+                } else {
+                    &self.mpv_backend
+                }
+            }
+            "mpv" => {
+                if self.mpv_backend.is_available() {
+                    &self.mpv_backend
+                } else if self.plasma_mpv_backend.is_available() {
+                    &self.plasma_mpv_backend
+                } else {
+                    &self.plasma_backend
+                }
+            }
+            _ => {
+                if self.plasma_backend.is_available() {
+                    &self.plasma_backend
+                } else if self.plasma_mpv_backend.is_available() {
+                    &self.plasma_mpv_backend
+                } else {
+                    &self.mpv_backend
+                }
+            }
         }
     }
 
     pub fn switch_backend(&self, target_backend: &str) -> Result<(), String> {
-        let normalized = if target_backend.to_lowercase().contains("mpv") {
+        let target_lower = target_backend.to_lowercase();
+        let normalized = if target_lower == "kde_mpv" || target_lower.contains("plasma_mpv") {
+            "kde_mpv"
+        } else if target_lower == "mpv" || target_lower.contains("mpvpaper") || target_lower.contains("standalone") {
             "mpv"
         } else {
             "kde"
@@ -259,6 +294,7 @@ impl WallpaperManager {
 
     pub fn stop(&self) -> Result<(), String> {
         let _ = self.mpv_backend.stop(None);
+        let _ = self.plasma_mpv_backend.stop(None);
         let _ = self.plasma_backend.stop(None);
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;

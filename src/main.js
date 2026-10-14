@@ -1436,16 +1436,34 @@ async function setupAutostartControls() {
 async function setupBackendControls() {
   if (!settingBackend) return;
   const labelActiveBackend = document.getElementById('label-active-backend');
+  const descBackendMode = document.getElementById('desc-backend-mode');
+
+  const backendInfo = {
+    'kde_mpv': {
+      title: 'KDE Plasma 6 (MPV Native Backend)',
+      color: '#10b981',
+      desc: 'KDE Plasma MPV embeds libmpv directly inside PlasmaShell underneath desktop icons with full hardware acceleration.'
+    },
+    'kde': {
+      title: 'KDE Plasma 6 (QtMultimedia Reborn)',
+      color: 'var(--text-primary)',
+      desc: 'KDE Native QtMultimedia uses FFmpeg VA-API decoding inside PlasmaShell directly beneath desktop icons.'
+    },
+    'mpv': {
+      title: 'Standalone MPV Engine (mpvpaper)',
+      color: '#38bdf8',
+      desc: 'Isolated Wayland layer surface with zero-copy DRM scanout (minimum CPU). Occludes desktop icons on Plasma.'
+    }
+  };
 
   const updateBackendLabel = (backend) => {
+    const info = backendInfo[backend] || backendInfo['kde_mpv'];
     if (labelActiveBackend) {
-      if (backend === 'mpv') {
-        labelActiveBackend.textContent = 'MPV Zero-Copy DMA-BUF Engine';
-        labelActiveBackend.style.color = '#10b981';
-      } else {
-        labelActiveBackend.textContent = 'KDE Plasma 6 Native Backend';
-        labelActiveBackend.style.color = 'var(--text-primary)';
-      }
+      labelActiveBackend.textContent = info.title;
+      labelActiveBackend.style.color = info.color;
+    }
+    if (descBackendMode) {
+      descBackendMode.textContent = info.desc;
     }
   };
 
@@ -1463,8 +1481,8 @@ async function setupBackendControls() {
       showToast('Switching wallpaper engine backend...', 'info');
       await invoke('set_wallpaper_backend', { backend: selected });
       updateBackendLabel(selected);
-      const name = selected === 'mpv' ? 'MPV Zero-Copy DMA-BUF Engine' : 'KDE Plasma 6 Native Backend';
-      showToast(`Wallpaper engine switched to ${name}`, 'success');
+      const info = backendInfo[selected] || backendInfo['kde_mpv'];
+      showToast(`Wallpaper engine switched to ${info.title}`, 'success');
     } catch (err) {
       showToast(`Failed to switch engine: ${err}`, 'error');
       try {

@@ -193,14 +193,15 @@
           <div>
             <h3 style="font-size: 0.95rem; font-weight: 500; margin-bottom: 6px;">Wallpaper Engine Backend</h3>
             <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">
-              Active: <strong id="label-active-backend">KDE Plasma 6 Native Backend</strong>
+              Active: <strong id="label-active-backend">KDE Plasma 6 (MPV Native Backend)</strong>
             </p>
-            <select id="setting-backend" style="width: 380px;">
-              <option value="kde">KDE Plasma 6 Native Backend (Desktop icons visible)</option>
-              <option value="mpv">MPV Zero-Copy DMA-BUF Engine (Ultra-low 5% CPU, standalone layer)</option>
+            <select id="setting-backend" style="width: 440px;">
+              <option value="kde_mpv">KDE Plasma 6 (MPV Native - Desktop icons visible)</option>
+              <option value="kde">KDE Plasma 6 (QtMultimedia - Desktop icons visible)</option>
+              <option value="mpv">Standalone MPV Engine (mpvpaper - Wayland layer surface)</option>
             </select>
             <p id="desc-backend-mode" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px; line-height: 1.4;">
-              KDE Native renders inside PlasmaShell directly beneath desktop icons. MPV runs as an isolated Wayland layer surface with minimum CPU overhead.
+              KDE Plasma MPV embeds libmpv directly inside PlasmaShell underneath desktop icons with full hardware acceleration.
             </p>
           </div>
 

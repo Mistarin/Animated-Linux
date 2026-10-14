@@ -214,13 +214,13 @@
               Choose whether closing the window prompts for action, minimizes to system tray, or terminates playback.
             </p>
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-              <select id="setting-close-behavior" style="width: 320px;">
-                <option value="tray" selected>Minimize to System Tray (Keep wallpaper running)</option>
-                <option value="ask">Ask every time (Show Controls Dialog)</option>
+              <select id="setting-close-behavior" style="width: 380px;">
+                <option value="ask" selected>Ask every time (Show Controls Dialog)</option>
+                <option value="tray">Minimize to System Tray (Keep wallpaper running)</option>
                 <option value="minimize">Minimize to Taskbar</option>
-                <option value="quit">Quit Application completely</option>
+                <option value="quit">Stop wallpaper, revert desktop, and quit completely</option>
               </select>
-              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to default (Minimize to Tray)" style="font-size: 0.8rem; padding: 6px 12px;">
+              <button class="btn btn-secondary" id="btn-reset-close-pref" title="Reset back to default (Ask every time)" style="font-size: 0.8rem; padding: 6px 12px;">
                 Reset to Default
               </button>
             </div>
@@ -394,6 +394,10 @@
           </button>
         </div>
 
+        <div style="margin: 0 20px 14px 20px; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45;">
+          <strong>Playback requirement:</strong> Animated wallpapers require Animated Linux to remain running (at least in your system tray). If you quit, playback will stop and your desktop will safely revert to your default static wallpaper.
+        </div>
+
         <div class="modal-options-list">
           <!-- Option 1: Minimize to System Tray -->
           <button class="modal-option-card recommended" id="btn-opt-tray">
@@ -420,14 +424,14 @@
             </div>
           </button>
 
-          <!-- Option 3: Quit Completely -->
+          <!-- Option 3: Stop Wallpaper & Quit -->
           <button class="modal-option-card danger" id="btn-opt-quit">
             <div class="modal-option-icon">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
             </div>
             <div class="modal-option-text">
-              <div class="modal-option-title">Quit Application</div>
-              <p class="modal-option-desc">Stops wallpaper playback completely and terminates all Animated Linux processes.</p>
+              <div class="modal-option-title">Stop Wallpaper & Quit Application</div>
+              <p class="modal-option-desc">Stops animated wallpaper playback, safely restores your default static desktop background, and terminates all Animated Linux processes.</p>
             </div>
           </button>
         </div>
@@ -438,6 +442,35 @@
             <span>Remember my choice (can be changed in Settings)</span>
           </label>
           <button class="btn btn-secondary" id="btn-dialog-cancel-footer">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-App Stop Wallpaper Confirmation Modal -->
+    <div class="modal-overlay hidden" id="modal-stop-confirm">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-stop-title" style="max-width: 460px;">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-header-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+            </div>
+            <div>
+              <h3 class="modal-title" id="modal-stop-title">Stop Animated Wallpaper</h3>
+              <p class="modal-subtitle">Safely restore desktop to static background</p>
+            </div>
+          </div>
+          <button class="btn btn-icon modal-btn-close" id="btn-cancel-stop-x" title="Dismiss">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div style="padding: 16px 20px; font-size: 0.84rem; color: var(--text-muted); line-height: 1.5;">
+          Stopping the animated wallpaper terminates playback and safely reverts your desktop back to your default static wallpaper.
+        </div>
+        <div class="modal-footer" style="justify-content: flex-end; gap: 8px;">
+          <button class="btn btn-secondary" id="btn-cancel-stop">Cancel</button>
+          <button class="btn btn-warning-action" id="btn-confirm-stop" style="background: #b45309 !important; border: 1px solid #d97706 !important; color: #ffffff !important; font-weight: 500;">
+            Stop & Revert Desktop
+          </button>
         </div>
       </div>
     </div>

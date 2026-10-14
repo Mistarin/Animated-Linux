@@ -610,18 +610,50 @@ function setupMediaControls() {
     }
   });
 
-  btnStopWp.addEventListener('click', async () => {
-    try {
-      await invoke('stop_wallpaper');
-      activeWallpaper = null;
-      isPlaying = false;
-      nowPlayingTitle.textContent = 'No Wallpaper Active';
-      nowPlayingSub.textContent = 'Desktop restored to default';
-      btnTogglePlay.innerHTML = Icons.play;
-      checkVariantCacheState();
-      renderLibrary();
-    } catch (e) {
-      console.error(e);
+  const modalStopConfirm = document.getElementById('modal-stop-confirm');
+  const btnCancelStop = document.getElementById('btn-cancel-stop');
+  const btnCancelStopX = document.getElementById('btn-cancel-stop-x');
+  const btnConfirmStop = document.getElementById('btn-confirm-stop');
+
+  const hideStopDialog = () => {
+    if (modalStopConfirm) modalStopConfirm.classList.add('hidden');
+  };
+
+  if (btnCancelStop) btnCancelStop.addEventListener('click', hideStopDialog);
+  if (btnCancelStopX) btnCancelStopX.addEventListener('click', hideStopDialog);
+  if (modalStopConfirm) {
+    modalStopConfirm.addEventListener('click', (e) => {
+      if (e.target === modalStopConfirm) hideStopDialog();
+    });
+  }
+
+  if (btnConfirmStop) {
+    btnConfirmStop.addEventListener('click', async () => {
+      hideStopDialog();
+      try {
+        await invoke('stop_wallpaper');
+        activeWallpaper = null;
+        isPlaying = false;
+        nowPlayingTitle.textContent = 'No Wallpaper Active';
+        nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
+        btnTogglePlay.innerHTML = Icons.play;
+        checkVariantCacheState();
+        renderLibrary();
+        showToast('Wallpaper stopped; desktop safely restored', 'info');
+      } catch (e) {
+        console.error(e);
+        showToast('Failed to stop wallpaper: ' + e, 'error');
+      }
+    });
+  }
+
+  btnStopWp.addEventListener('click', () => {
+    if (!activeWallpaper) {
+      showToast('No active wallpaper is currently playing', 'info');
+      return;
+    }
+    if (modalStopConfirm) {
+      modalStopConfirm.classList.remove('hidden');
     }
   });
 
@@ -1035,7 +1067,7 @@ function setupImportAndDrop() {
 
 // Window Controls & Exit Modal Logic
 function setupWindowControls() {
-  const getCloseBehavior = () => localStorage.getItem('close_behavior') || 'tray';
+  const getCloseBehavior = () => localStorage.getItem('close_behavior') || 'ask';
 
   const updateSettingDropdown = () => {
     if (settingCloseBehavior) {
@@ -1045,7 +1077,6 @@ function setupWindowControls() {
 
   updateSettingDropdown();
 
-
   // Settings dropdown change
   if (settingCloseBehavior) {
     settingCloseBehavior.addEventListener('change', (e) => {
@@ -1053,11 +1084,12 @@ function setupWindowControls() {
     });
   }
 
-  // Reset prompt button to default (tray)
+  // Reset prompt button to default (ask every time)
   if (btnResetClosePref) {
     btnResetClosePref.addEventListener('click', () => {
-      localStorage.setItem('close_behavior', 'tray');
+      localStorage.setItem('close_behavior', 'ask');
       updateSettingDropdown();
+      showToast('Close behavior reset to Ask every time', 'info');
     });
   }
 

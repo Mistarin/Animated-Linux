@@ -55,12 +55,14 @@ pub struct WallpaperManager {
     pub active_wallpaper: Mutex<Option<WallpaperItem>>,
     storage_dir: PathBuf,
     library_path: PathBuf,
+    settings_path: PathBuf,
 }
 
 impl WallpaperManager {
     pub fn new() -> Self {
         let storage_dir = resolve_app_storage_dir();
         let library_path = storage_dir.join("library.json");
+        let settings_path = storage_dir.join("settings.json");
 
         // Migration: check if legacy ~/.config/aetherpaper/library.json exists and migrate
         if !library_path.exists() {
@@ -116,15 +118,38 @@ impl WallpaperManager {
             "kde_mpv".to_string()
         };
 
+        let initial_settings = if settings_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&settings_path) {
+                match serde_json::from_str::<PlaybackSettings>(&content) {
+                    Ok(s) => {
+                        println!(
+                            "[AnimatedLinux] Restored persistent playback settings: Quality Q{}, {} FPS, {}x speed, FillMode {}, Pan ({}, {}), PausePolicy {}",
+                            s.quality_level, s.target_fps, s.speed, s.fill_mode, s.pan_x, s.pan_y, s.pause_policy
+                        );
+                        s
+                    }
+                    Err(e) => {
+                        eprintln!("[AnimatedLinux] Failed to parse settings.json ({}), using defaults", e);
+                        PlaybackSettings::default()
+                    }
+                }
+            } else {
+                PlaybackSettings::default()
+            }
+        } else {
+            PlaybackSettings::default()
+        };
+
         Self {
             plasma_backend: KdePlasmaBackend::new(),
             plasma_mpv_backend: KdePlasmaMpvBackend::new(),
             mpv_backend: MpvBackend::new(),
             active_backend_type: Mutex::new(initial_backend),
-            current_settings: Mutex::new(PlaybackSettings::default()),
+            current_settings: Mutex::new(initial_settings),
             active_wallpaper: Mutex::new(restored_active),
             storage_dir,
             library_path,
+            settings_path,
         }
     }
 
@@ -210,15 +235,31 @@ impl WallpaperManager {
         Ok(())
     }
 
+    pub fn save_settings(&self, settings: &PlaybackSettings) {
+        if let Ok(json) = serde_json::to_string_pretty(settings) {
+            let _ = std::fs::write(&self.settings_path, json);
+        }
+    }
+
     pub fn apply_wallpaper(&self, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let backend = self.get_active_backend();
         println!("[AnimatedLinux] Applying wallpaper via {}", backend.name());
-        backend.apply(&wallpaper, screen, &settings)?;
-        let mut save_item = wallpaper.clone();
+
+        // Auto-select preferred cached variant (e.g. Q1-Q4) if available
+        let mut effective_wp = wallpaper;
+        if settings.quality_level < 5 {
+            let variant_file = self.storage_dir.join(format!("{}_q{}.mp4", effective_wp.id, settings.quality_level));
+            if variant_file.exists() {
+                effective_wp.file_path = variant_file.to_string_lossy().to_string();
+            }
+        }
+
+        backend.apply(&effective_wp, screen, &settings)?;
+        let mut save_item = effective_wp.clone();
         save_item.thumbnail_data = None;
         let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&save_item).unwrap_or_default());
-        *self.active_wallpaper.lock().unwrap() = Some(wallpaper);
+        *self.active_wallpaper.lock().unwrap() = Some(effective_wp);
         Ok(())
     }
 
@@ -241,6 +282,9 @@ impl WallpaperManager {
         let mut settings = self.current_settings.lock().unwrap();
         settings.volume = volume;
         settings.is_muted = muted;
+        let updated = settings.clone();
+        drop(settings);
+        self.save_settings(&updated);
         let backend = self.get_active_backend();
         backend.set_volume(volume, muted)
     }
@@ -248,6 +292,9 @@ impl WallpaperManager {
     pub fn set_speed(&self, speed: f32) -> Result<(), String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.speed = speed;
+        let updated = settings.clone();
+        drop(settings);
+        self.save_settings(&updated);
         let backend = self.get_active_backend();
         backend.set_speed(speed)
     }
@@ -273,6 +320,8 @@ impl WallpaperManager {
         let updated = settings.clone();
         drop(settings);
 
+        self.save_settings(&updated);
+
         // If a wallpaper is currently active, re-apply with new performance parameters
         let active = self.active_wallpaper.lock().unwrap().clone();
         if let Some(wp) = active {
@@ -288,6 +337,10 @@ impl WallpaperManager {
         settings.fill_mode = fill_mode;
         settings.pan_x = pan_x;
         settings.pan_y = pan_y;
+        let updated = settings.clone();
+        drop(settings);
+
+        self.save_settings(&updated);
         let backend = self.get_active_backend();
         backend.set_geometry(fill_mode, pan_x, pan_y)
     }

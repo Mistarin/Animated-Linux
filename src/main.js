@@ -264,6 +264,7 @@ function setupSearch() {
   if (selectLibrarySort) {
     selectLibrarySort.addEventListener('change', (e) => {
       currentSort = e.target.value;
+      localStorage.setItem('library_sort', currentSort);
       renderLibrary();
     });
   }
@@ -571,17 +572,32 @@ window.onOptimizeWallpaper = async (id) => {
 
 async function applyWallpaper(wp, screenId) {
   try {
+    let targetWp = wp;
+    if (currentQuality < 5 && (wp.cached_qualities || []).includes(currentQuality)) {
+      try {
+        const switched = await invoke('switch_wallpaper_quality', {
+          id: wp.id,
+          qualityLevel: currentQuality,
+        });
+        if (switched) {
+          targetWp = switched;
+          const idx = wallpapers.findIndex((w) => w.id === switched.id);
+          if (idx !== -1) wallpapers[idx] = switched;
+        }
+      } catch (_) {}
+    }
+
     await invoke('apply_wallpaper', {
-      wallpaper: wp,
+      wallpaper: targetWp,
       screen: screenId !== null ? screenId : null,
     });
-    activeWallpaper = wp;
+    activeWallpaper = targetWp;
     isPlaying = true;
 
     // Update bottom player
-    nowPlayingThumb.src = getThumbnail(wp);
-    nowPlayingTitle.textContent = wp.title;
-    nowPlayingSub.textContent = `Playing on Desktop (${wp.format.toUpperCase()} • ${wp.resolution || 'HD'})`;
+    nowPlayingThumb.src = getThumbnail(targetWp);
+    nowPlayingTitle.textContent = targetWp.title;
+    nowPlayingSub.textContent = `Playing on Desktop (${targetWp.format.toUpperCase()} • ${targetWp.resolution || 'HD'})`;
     btnTogglePlay.innerHTML = Icons.pause;
 
     checkVariantCacheState();
@@ -666,6 +682,7 @@ function setupMediaControls() {
         isMuted: true,
         speed: currentSpeed,
       });
+      showToast(`Playback speed set to ${currentSpeed}x`, 'info');
     } catch (err) {
       console.error(err);
     }
@@ -675,6 +692,11 @@ function setupMediaControls() {
   sliderQuality.addEventListener('input', async (e) => {
     const val = parseInt(e.target.value);
     await onQualitySliderChanged(val);
+  });
+  sliderQuality.addEventListener('change', (e) => {
+    const val = parseInt(e.target.value);
+    const profile = QUALITY_PROFILES[val] || QUALITY_PROFILES[5];
+    showToast(`Quality preference saved: ${profile.badge} (${profile.title})`, 'info');
   });
 }
 
@@ -694,11 +716,29 @@ function setPanSelectValue(selectEl, numVal) {
   }
 }
 
+// Helper to set or add formatted speed value (0.5, 1.0, 1.5, etc.) in select dropdown
+function setSpeedSelectValue(selectEl, speedVal) {
+  if (!selectEl) return;
+  const str = speedVal.toString();
+  const existing = Array.from(selectEl.options).find(
+    (opt) => Math.abs(parseFloat(opt.value) - speedVal) < 0.001
+  );
+  if (existing) {
+    selectEl.value = existing.value;
+  } else {
+    const newOpt = new Option(`${speedVal}x`, str, true, true);
+    selectEl.add(newOpt);
+    selectEl.value = str;
+  }
+}
+
 // Geometry / Sizing and Pan Controls
 function setupGeometryControls() {
   selectSizing.addEventListener('change', async (e) => {
     currentFillMode = parseInt(e.target.value);
     await syncGeometry();
+    const modes = ['Stretch', 'Fit Aspect', 'Fill / Zoom', 'Center'];
+    showToast(`Display sizing set to ${modes[currentFillMode] || 'Custom'}`, 'info');
   });
 
   selectPanX.addEventListener('change', async (e) => {
@@ -717,6 +757,7 @@ function setupGeometryControls() {
     selectPanX.value = '0';
     selectPanY.value = '0';
     await syncGeometry();
+    showToast('Position offset reset to center (0, 0)', 'info');
   });
 }
 
@@ -738,19 +779,27 @@ function setupPerformanceControls() {
     const val = parseInt(e.target.value);
     await onQualitySliderChanged(val);
   });
+  settingQualitySlider.addEventListener('change', (e) => {
+    const val = parseInt(e.target.value);
+    const profile = QUALITY_PROFILES[val] || QUALITY_PROFILES[5];
+    showToast(`Quality preference saved: ${profile.badge} (${profile.title})`, 'info');
+  });
 
   settingFpsSelect.addEventListener('change', async (e) => {
     currentFps = parseInt(e.target.value);
     await syncPerformanceSettings();
+    showToast(`Target rendering FPS set to ${currentFps === 0 ? 'Source / Native' : currentFps + ' FPS'}`, 'info');
   });
 
   settingPausePolicy.addEventListener('change', async (e) => {
     currentPausePolicy = parseInt(e.target.value);
     await syncPerformanceSettings();
+    showToast('Pausing policy preference saved', 'info');
   });
 
   chkHardwareAccel.addEventListener('change', async () => {
     await syncPerformanceSettings();
+    showToast(`Hardware acceleration ${chkHardwareAccel.checked ? 'enabled' : 'disabled'}`, 'info');
   });
 
   // Optimize Active Wallpaper button (turns green when variant is uncached)
@@ -933,11 +982,12 @@ async function loadPerformanceSettings() {
   try {
     const s = await invoke('get_performance_settings');
     currentQuality = s.quality_level || 5;
-    currentFps = s.target_fps || 30;
+    currentFps = s.target_fps !== undefined ? s.target_fps : 30;
     currentFillMode = s.fill_mode !== undefined ? s.fill_mode : 2;
-    currentPanX = s.pan_x || 0.0;
-    currentPanY = s.pan_y || 0.0;
+    currentPanX = s.pan_x !== undefined ? s.pan_x : 0.0;
+    currentPanY = s.pan_y !== undefined ? s.pan_y : 0.0;
     currentPausePolicy = s.pause_policy !== undefined ? s.pause_policy : 1;
+    currentSpeed = s.speed !== undefined ? s.speed : 1.0;
 
     sliderQuality.value = currentQuality;
     settingQualitySlider.value = currentQuality;
@@ -951,7 +1001,15 @@ async function loadPerformanceSettings() {
     selectSizing.value = currentFillMode.toString();
     setPanSelectValue(selectPanX, currentPanX);
     setPanSelectValue(selectPanY, currentPanY);
+    setSpeedSelectValue(selectSpeed, currentSpeed);
     chkHardwareAccel.checked = s.hardware_accel;
+
+    // Restore saved library sort preference
+    const savedSort = localStorage.getItem('library_sort') || 'recent';
+    currentSort = savedSort;
+    if (selectLibrarySort) {
+      selectLibrarySort.value = savedSort;
+    }
   } catch (e) {
     console.error('Failed to load performance settings:', e);
   }

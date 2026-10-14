@@ -37,6 +37,7 @@ pub fn encode_thumbnail_base64(path: &Path) -> Option<String> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PlaybackSettings {
     pub volume: u32,
     pub is_muted: bool,
@@ -59,8 +60,8 @@ impl Default for PlaybackSettings {
             is_muted: true,
             speed: 1.0,
             is_paused: false,
-            pause_on_fullscreen: false,
-            pause_policy: 0,
+            pause_on_fullscreen: true,
+            pause_policy: 1,
             fill_mode: 2,
             pan_x: 0.0,
             pan_y: 0.0,

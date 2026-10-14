@@ -326,6 +326,14 @@ fn switch_wallpaper_quality(
     let updated = item.clone();
     state.wallpaper_mgr.save_library(&library)?;
 
+    {
+        let mut s = state.wallpaper_mgr.current_settings.lock().unwrap();
+        s.quality_level = quality_level.clamp(1, 5);
+        let updated_s = s.clone();
+        drop(s);
+        state.wallpaper_mgr.save_settings(&updated_s);
+    }
+
     let active_id = {
         let active = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
         active.as_ref().map(|w| w.id.clone())

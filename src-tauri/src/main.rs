@@ -1099,37 +1099,9 @@ fn resolve_app_executable_and_icon() -> (String, String) {
         }
     }
 
-    // 2. Scan for candidate AppImages, prioritizing permanent ~/Applications directory
+    // 2. Scan for candidates (both AppImages and Native Binaries) and select the newest built artifact
     if exe_str.is_empty() {
-        if let Some(home) = dirs::home_dir() {
-            let app_dir = home.join("Applications");
-            if app_dir.is_dir() {
-                let mut app_candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-                if let Ok(entries) = std::fs::read_dir(&app_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_file() {
-                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
-                            if name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether")) {
-                                if let Ok(meta) = path.metadata() {
-                                    let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                                    app_candidates.push((mtime, path));
-                                }
-                            }
-                        }
-                    }
-                }
-                app_candidates.sort_by(|a, b| b.0.cmp(&a.0));
-                if let Some((_, newest_app)) = app_candidates.into_iter().next() {
-                    exe_str = newest_app.to_string_lossy().to_string();
-                }
-            }
-        }
-    }
-
-    // 3. If not found in ~/Applications, scan workspace and user search directories
-    if exe_str.is_empty() {
-        let mut appimage_candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+        let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
         let mut check_dirs: Vec<PathBuf> = Vec::new();
 
         if let Ok(cur) = std::env::current_exe() {
@@ -1137,6 +1109,7 @@ fn resolve_app_executable_and_icon() -> (String, String) {
             while let Some(dir) = p {
                 check_dirs.push(dir.to_path_buf());
                 check_dirs.push(dir.join("dist"));
+                check_dirs.push(dir.join("src-tauri").join("target").join("release"));
                 check_dirs.push(dir.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
                 p = dir.parent();
             }
@@ -1145,16 +1118,14 @@ fn resolve_app_executable_and_icon() -> (String, String) {
         if let Ok(cwd) = std::env::current_dir() {
             check_dirs.push(cwd.clone());
             check_dirs.push(cwd.join("dist"));
+            check_dirs.push(cwd.join("src-tauri").join("target").join("release"));
             check_dirs.push(cwd.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
         }
 
         if let Some(home) = dirs::home_dir() {
+            check_dirs.push(home.join("Applications"));
             check_dirs.push(home.join(".local").join("bin"));
             check_dirs.push(home.join("bin"));
-            check_dirs.push(home.join("Desktop"));
-            check_dirs.push(home.join("Plocha"));
-            check_dirs.push(home.join("Downloads"));
-            check_dirs.push(home.join("Stažené"));
         }
 
         for dir in check_dirs {
@@ -1164,10 +1135,12 @@ fn resolve_app_executable_and_icon() -> (String, String) {
                         let path = entry.path();
                         if path.is_file() {
                             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
-                            if name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether")) {
+                            let is_appimage = name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether"));
+                            let is_native_bin = (name == "animated-linux" || name == "animated-linux-x86_64") && !path.to_string_lossy().contains("/.mount_");
+                            if is_appimage || is_native_bin {
                                 if let Ok(meta) = path.metadata() {
                                     let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                                    appimage_candidates.push((mtime, path));
+                                    candidates.push((mtime, path));
                                 }
                             }
                         }
@@ -1176,26 +1149,22 @@ fn resolve_app_executable_and_icon() -> (String, String) {
             }
         }
 
-        appimage_candidates.sort_by(|a, b| b.0.cmp(&a.0));
-        if let Some((_, newest_appimage)) = appimage_candidates.into_iter().next() {
-            exe_str = newest_appimage.to_string_lossy().to_string();
+        // Sort descending by modification time: the newest built artifact wins
+        candidates.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some((_, newest_target)) = candidates.into_iter().next() {
+            exe_str = newest_target.to_string_lossy().to_string();
         }
     }
 
-    // 3. Fallback to standalone binaries if no AppImage was found
+    // 3. Fallback to launcher scripts (run.sh or setup/launch.sh)
     if exe_str.is_empty() {
         if let Ok(current_exe) = std::env::current_exe() {
             let mut check_dir = current_exe.parent();
             while let Some(dir) = check_dir {
-                let dist_bin = dir.join("dist").join("animated-linux-x86_64");
-                let rel_bin = dir.join("src-tauri").join("target").join("release").join("animated-linux");
+                let run_sh = dir.join("run.sh");
                 let launch_sh = dir.join("setup").join("launch.sh");
-
-                if dist_bin.exists() {
-                    exe_str = dist_bin.to_string_lossy().to_string();
-                    break;
-                } else if rel_bin.exists() {
-                    exe_str = rel_bin.to_string_lossy().to_string();
+                if run_sh.exists() {
+                    exe_str = run_sh.to_string_lossy().to_string();
                     break;
                 } else if launch_sh.exists() {
                     exe_str = launch_sh.to_string_lossy().to_string();

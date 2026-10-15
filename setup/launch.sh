@@ -116,6 +116,19 @@ if [ "$FORCE_BUILD" -eq 1 ]; then
     fi
 fi
 
+is_outdated() {
+    local target="$1"
+    if [ ! -f "$target" ]; then
+        return 0
+    fi
+    local newer_files
+    newer_files=$(find "$ROOT_DIR/src" "$ROOT_DIR/src-tauri/src" "$ROOT_DIR/index.html" "$ROOT_DIR/setup" -type f -newer "$target" 2>/dev/null | head -n 1)
+    if [ -n "$newer_files" ]; then
+        return 0
+    fi
+    return 1
+}
+
 # Locate existing targets based on priority and availability
 FOUND_APPIMAGE=""
 if [ -f "$APPIMAGE_BIN" ] && [ -x "$APPIMAGE_BIN" ]; then
@@ -135,8 +148,8 @@ SELECTED_EXEC=""
 EXEC_TYPE=""
 
 if [ "$TARGET_MODE" = "appimage" ]; then
-    if [ -z "$FOUND_APPIMAGE" ]; then
-        echo "[Launcher] AppImage requested but not found. Building AppImage..."
+    if [ -z "$FOUND_APPIMAGE" ] || is_outdated "$FOUND_APPIMAGE"; then
+        echo "[Launcher] AppImage is missing or outdated. Building AppImage..."
         bash "$ROOT_DIR/setup/build_image.sh" --bundle
         if [ -f "$APPIMAGE_BIN" ]; then
             FOUND_APPIMAGE="$APPIMAGE_BIN"
@@ -145,8 +158,8 @@ if [ "$TARGET_MODE" = "appimage" ]; then
     SELECTED_EXEC="$FOUND_APPIMAGE"
     EXEC_TYPE="AppImage package"
 elif [ "$TARGET_MODE" = "binary" ]; then
-    if [ -z "$FOUND_BINARY" ]; then
-        echo "[Launcher] Native executable requested but not found. Building release binary..."
+    if [ -z "$FOUND_BINARY" ] || is_outdated "$FOUND_BINARY"; then
+        echo "[Launcher] Native executable is missing or outdated. Building release binary..."
         bash "$ROOT_DIR/setup/build_image.sh" --binary-only
         if [ -f "$RELEASE_EXE" ]; then
             FOUND_BINARY="$RELEASE_EXE"
@@ -157,16 +170,20 @@ elif [ "$TARGET_MODE" = "binary" ]; then
     SELECTED_EXEC="$FOUND_BINARY"
     EXEC_TYPE="Native binary"
 else
-    # Auto Mode: Priority 1: AppImage, Priority 2: Native Executable
-    if [ -n "$FOUND_APPIMAGE" ]; then
+    # Auto Mode: Priority 1: Up-to-date AppImage, Priority 2: Up-to-date Native Executable, Priority 3: Auto-build Native Executable
+    if [ -n "$FOUND_APPIMAGE" ] && ! is_outdated "$FOUND_APPIMAGE"; then
         SELECTED_EXEC="$FOUND_APPIMAGE"
-        EXEC_TYPE="AppImage package (Priority 1)"
-    elif [ -n "$FOUND_BINARY" ]; then
+        EXEC_TYPE="AppImage package (Up-to-date, Priority 1)"
+    elif [ -n "$FOUND_BINARY" ] && ! is_outdated "$FOUND_BINARY"; then
         SELECTED_EXEC="$FOUND_BINARY"
-        EXEC_TYPE="Native binary (Priority 2)"
+        EXEC_TYPE="Native binary (Up-to-date, Priority 2)"
     else
-        echo "[Launcher] No pre-built AppImage or executable found."
-        echo "[Launcher] Auto-building standalone release binary..."
+        if [ -n "$FOUND_APPIMAGE" ] || [ -n "$FOUND_BINARY" ]; then
+            echo "[Launcher] Source changes detected since previous build."
+        else
+            echo "[Launcher] No pre-built AppImage or executable found."
+        fi
+        echo "[Launcher] Auto-building up-to-date standalone release binary..."
         bash "$ROOT_DIR/setup/build_image.sh" --binary-only
         if [ -f "$RELEASE_EXE" ]; then
             SELECTED_EXEC="$RELEASE_EXE"

@@ -141,41 +141,23 @@ print("Applied MPV wallpaper to target " + target);
     fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
         let inactive_black = settings.inactive_black_screen;
-        let script = if inactive_black {
-            format!(
-                r##"
-var allDesktops = desktops();
-var target = {target_screen};
-for (var i = 0; i < allDesktops.length; i++) {{
-    var d = allDesktops[i];
-    if (target === -1 || d.screen === target) {{
-        d.wallpaperPlugin = "org.kde.color";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.color", "General");
-        d.writeConfig("Color", "#000000");
-        d.reloadConfig();
-    }}
-}}
-"##,
-                target_screen = target_screen
-            )
-        } else {
-            format!(
-                r#"
+        let script = format!(
+            r#"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
-        d.writeConfig("Speed", 0.0);
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
         d.writeConfig("UserPaused", true);
         d.reloadConfig();
     }}
 }}
 "#,
-                target_screen = target_screen
-            )
-        };
+            target_screen = target_screen,
+            inactive_black = inactive_black
+        );
         Self::run_plasma_script(&script)?;
         Ok(())
     }

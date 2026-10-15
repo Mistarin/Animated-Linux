@@ -17,6 +17,9 @@ CARGO_RELEASE_EXE="$ROOT_DIR/src-tauri/target/release/$APP_NAME"
 export GTK_THEME="Adwaita:dark"
 export GTK_APPLICATION_PREFER_DARK_THEME="1"
 
+# Prevent WebKitGTK explicit sync crashes on Wayland (Error 71)
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+
 print_header() {
     echo "================================================================"
     echo "          Animated Linux Launcher                               "

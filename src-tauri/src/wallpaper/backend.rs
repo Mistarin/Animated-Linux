@@ -54,6 +54,7 @@ pub struct PlaybackSettings {
     pub inactive_black_screen: bool,
     pub restart_on_resume: bool,
     pub start_minimized: bool,
+    pub pause_per_monitor: bool, // true: individual monitor, false: all monitors (everyone)
 }
 
 impl Default for PlaybackSettings {
@@ -74,6 +75,7 @@ impl Default for PlaybackSettings {
             inactive_black_screen: false,
             restart_on_resume: false,
             start_minimized: false,
+            pause_per_monitor: true,
         }
     }
 }

@@ -10,6 +10,9 @@ cd "$ROOT_DIR"
 export GTK_THEME="Adwaita:dark"
 export GTK_APPLICATION_PREFER_DARK_THEME="1"
 
+# Prevent WebKitGTK explicit sync crashes on Wayland (Error 71)
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+
 echo "================================================================"
 echo "          Animated Linux - Development Launcher (Live HMR)     "
 echo "================================================================"

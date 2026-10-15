@@ -29,6 +29,9 @@ pub enum ActionRequest {
     StopWallpaper {
         responder: oneshot::Sender<Result<(), String>>,
     },
+    ResetDesktop {
+        responder: oneshot::Sender<Result<(), String>>,
+    },
     SetPlaybackState {
         is_paused: bool,
         volume: u32,
@@ -73,6 +76,10 @@ impl RequestManager {
                     }
                     ActionRequest::StopWallpaper { responder } => {
                         let res = wallpaper_mgr.stop();
+                        let _ = responder.send(res);
+                    }
+                    ActionRequest::ResetDesktop { responder } => {
+                        let res = wallpaper_mgr.reset_desktop();
                         let _ = responder.send(res);
                     }
                     ActionRequest::SetPlaybackState { is_paused, volume, is_muted, speed, responder } => {
@@ -128,6 +135,15 @@ impl RequestManager {
             .await
             .map_err(|e| format!("Failed to enqueue StopWallpaper request: {}", e))?;
         receiver.await.map_err(|e| format!("Failed to receive StopWallpaper response: {}", e))?
+    }
+
+    pub async fn reset_desktop(&self) -> Result<(), String> {
+        let (responder, receiver) = oneshot::channel();
+        self.sender
+            .send(ActionRequest::ResetDesktop { responder })
+            .await
+            .map_err(|e| format!("Failed to enqueue ResetDesktop request: {}", e))?;
+        receiver.await.map_err(|e| format!("Failed to receive ResetDesktop response: {}", e))?
     }
 
     pub async fn set_playback_state(&self, is_paused: bool, volume: u32, is_muted: bool, speed: f32) -> Result<(), String> {

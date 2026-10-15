@@ -100,6 +100,8 @@ const settingQualityTitle = document.getElementById('setting-quality-title');
 const settingQualityDesc = document.getElementById('setting-quality-desc');
 const settingFpsSelect = document.getElementById('setting-fps-select');
 const settingPausePolicy = document.getElementById('setting-pause-policy');
+const settingPauseScope = document.getElementById('setting-pause-scope');
+const btnResetDesktop = document.getElementById('btn-reset-desktop');
 const btnCompressActive = document.getElementById('btn-compress-active');
 const btnCompressAll = document.getElementById('btn-compress-all');
 const cachingProgressContainer = document.getElementById('caching-progress-container');
@@ -716,12 +718,17 @@ function setupMediaControls() {
         activeWallpaper = null;
         isPlaying = false;
         nowPlayingTitle.textContent = 'No Wallpaper Active';
-        nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
+        const isInactiveBlack = chkInactiveBlack && chkInactiveBlack.checked;
+        nowPlayingSub.textContent = isInactiveBlack
+          ? 'Desktop transitioned to black screen'
+          : 'Desktop restored to default static wallpaper';
         btnTogglePlay.innerHTML = Icons.play;
         updateActivePlayerBadge(null);
         checkVariantCacheState();
         renderLibrary();
-        showToast('Wallpaper stopped; desktop safely restored', 'info');
+        showToast(isInactiveBlack
+          ? 'Wallpaper stopped; screen faded to black'
+          : 'Wallpaper stopped; desktop safely restored', 'info');
       } catch (e) {
         console.error(e);
         showToast('Failed to stop wallpaper: ' + e, 'error');
@@ -730,10 +737,6 @@ function setupMediaControls() {
   }
 
   btnStopWp.addEventListener('click', () => {
-    if (!activeWallpaper) {
-      showToast('No active wallpaper is currently playing', 'info');
-      return;
-    }
     if (modalStopConfirm) {
       modalStopConfirm.classList.remove('hidden');
     }
@@ -891,10 +894,30 @@ function setupPerformanceControls() {
     });
   }
 
-  if (chkRestartOnResume) {
-    chkRestartOnResume.addEventListener('change', async () => {
+  if (settingPauseScope) {
+    settingPauseScope.addEventListener('change', async () => {
       await syncPerformanceSettings();
-      showToast(chkRestartOnResume.checked ? 'Resume mode: Restart from beginning (0s)' : 'Resume mode: Continue from paused position', 'info');
+      showToast(`Pause scope set to ${settingPauseScope.value === 'individual' ? 'Individual Monitors' : 'All Monitors (Everyone)'}`, 'info');
+    });
+  }
+
+  if (btnResetDesktop) {
+    btnResetDesktop.addEventListener('click', async () => {
+      try {
+        await invoke('reset_desktop_wallpaper');
+        activeWallpaper = null;
+        isPlaying = false;
+        nowPlayingTitle.textContent = 'No Wallpaper Active';
+        nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
+        btnTogglePlay.innerHTML = Icons.play;
+        updateActivePlayerBadge(null);
+        checkVariantCacheState();
+        renderLibrary();
+        showToast('Desktop successfully reset to default static wallpaper', 'success');
+      } catch (err) {
+        console.error('Failed to reset desktop:', err);
+        showToast('Failed to reset desktop: ' + err, 'error');
+      }
     });
   }
 
@@ -1207,6 +1230,9 @@ async function loadPerformanceSettings() {
     if (chkStartMinimized && s.start_minimized !== undefined) {
       chkStartMinimized.checked = s.start_minimized;
     }
+    if (settingPauseScope) {
+      settingPauseScope.value = (s.pause_per_monitor !== false) ? 'individual' : 'global';
+    }
 
     // Restore saved library sort preference
     const savedSort = localStorage.getItem('library_sort') || 'recent';
@@ -1229,6 +1255,7 @@ async function syncPerformanceSettings() {
       hardwareAccel: chkHardwareAccel.checked,
       inactiveBlackScreen: chkInactiveBlack ? chkInactiveBlack.checked : false,
       restartOnResume: chkRestartOnResume ? chkRestartOnResume.checked : false,
+      pausePerMonitor: settingPauseScope ? (settingPauseScope.value === 'individual') : true,
     });
   } catch (err) {
     console.error('Failed to sync performance settings:', err);

@@ -228,6 +228,17 @@
                   </select>
                 </div>
 
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div>
+                    <div style="font-size: 0.82rem; color: var(--text-secondary);">Pause Scope:</div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Pause wallpaper only on covered monitor or globally across all screens</div>
+                  </div>
+                  <select id="setting-pause-scope" style="min-width: 170px;">
+                    <option value="individual" selected>Individual Monitors</option>
+                    <option value="global">All Monitors (Everyone)</option>
+                  </select>
+                </div>
+
                 <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
                   <div class="setting-row">
                     <div class="setting-row-text">
@@ -415,6 +426,10 @@
                   <button class="btn btn-secondary" id="btn-open-folder-settings" title="Open wallpapers directory in system file manager" style="flex: 1; min-width: 150px;">
                     <span id="icon-folder-settings-slot"></span>
                     <span>Open Storage Folder</span>
+                  </button>
+                  <button class="btn btn-secondary" id="btn-reset-desktop" title="Reset and restore desktop back to your default static wallpaper" style="flex: 1; min-width: 150px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    <span>Reset Desktop Wallpaper</span>
                   </button>
                 </div>
               </div>

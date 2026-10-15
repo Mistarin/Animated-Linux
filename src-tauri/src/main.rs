@@ -559,6 +559,11 @@ async fn stop_wallpaper(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn reset_desktop_wallpaper(state: State<'_, AppState>) -> Result<(), String> {
+    state.request_manager.reset_desktop().await
+}
+
+#[tauri::command]
 fn get_active_wallpaper(state: State<'_, AppState>) -> Option<WallpaperItem> {
     state.wallpaper_mgr.active_wallpaper.lock().unwrap().clone()
 }
@@ -589,6 +594,7 @@ fn update_performance_settings(
     hardware_accel: bool,
     inactive_black_screen: bool,
     restart_on_resume: bool,
+    pause_per_monitor: bool,
 ) -> Result<PlaybackSettings, String> {
     state.wallpaper_mgr.update_performance_settings(
         quality_level,
@@ -598,6 +604,7 @@ fn update_performance_settings(
         hardware_accel,
         inactive_black_screen,
         restart_on_resume,
+        pause_per_monitor,
     )
 }
 
@@ -1631,6 +1638,10 @@ fn main() {
     {
         std::env::set_var("GTK_THEME", "Adwaita:dark");
         std::env::set_var("GTK_APPLICATION_PREFER_DARK_THEME", "1");
+        // Prevent WebKitGTK explicit sync crashes on Wayland (Error 71 dispatching to Wayland display)
+        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
     }
 
     let steam_mgr = SteamManager::new(480);
@@ -1713,6 +1724,7 @@ fn main() {
             rename_wallpaper,
             apply_wallpaper,
             stop_wallpaper,
+            reset_desktop_wallpaper,
             get_active_wallpaper,
             set_playback_state,
             get_performance_settings,

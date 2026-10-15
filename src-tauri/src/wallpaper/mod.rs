@@ -430,6 +430,7 @@ print(JSON.stringify(results));
         hardware_accel: bool,
         inactive_black_screen: bool,
         restart_on_resume: bool,
+        pause_per_monitor: bool,
     ) -> Result<PlaybackSettings, String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.quality_level = quality_level.clamp(1, 5);
@@ -439,6 +440,7 @@ print(JSON.stringify(results));
         settings.hardware_accel = hardware_accel;
         settings.inactive_black_screen = inactive_black_screen;
         settings.restart_on_resume = restart_on_resume;
+        settings.pause_per_monitor = pause_per_monitor;
         let updated = settings.clone();
         drop(settings);
 
@@ -467,6 +469,34 @@ print(JSON.stringify(results));
         backend.set_geometry(fill_mode, pan_x, pan_y)
     }
 
+    pub fn set_black_screen(&self) -> Result<(), String> {
+        let script = r##"
+var allDesktops = desktops();
+for (var i = 0; i < allDesktops.length; i++) {
+    var d = allDesktops[i];
+    d.wallpaperPlugin = "org.kde.color";
+    d.currentConfigGroup = Array("Wallpaper", "org.kde.color", "General");
+    d.writeConfig("Color", "#000000");
+    d.reloadConfig();
+}
+"##;
+        let output = new_host_command("qdbus")
+            .arg("org.kde.plasmashell")
+            .arg("/PlasmaShell")
+            .arg("org.kde.PlasmaShell.evaluateScript")
+            .arg(script)
+            .output()
+            .map_err(|e| format!("Failed to set black screen via Plasma evaluateScript: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("[AnimatedLinux] Warning setting black screen: {}", stderr);
+        } else {
+            println!("[AnimatedLinux] Desktop wallpaper set to black screen");
+        }
+        Ok(())
+    }
+
     pub fn restore_previous_wallpaper(&self) -> Result<(), String> {
         let backup_file = self.storage_dir.join("previous_wallpaper.json");
         let backups: Vec<DesktopWallpaperBackup> = if backup_file.exists() {
@@ -479,7 +509,7 @@ print(JSON.stringify(results));
             Vec::new()
         };
 
-        let _ = std::fs::remove_file(&backup_file);
+        // Note: We retain previous_wallpaper.json so future desktop resets always have baseline configs
 
         let backups_json = serde_json::to_string(&backups).unwrap_or_else(|_| "[]".to_string());
         let script = format!(
@@ -500,14 +530,11 @@ for (var i = 0; i < allDesktops.length; i++) {{
         backup = backups[0];
     }}
 
-    if (backup) {{
-        d.wallpaperPlugin = backup.plugin;
-        d.currentConfigGroup = Array("Wallpaper", backup.plugin, "General");
-        for (var key in backup.config) {{
-            if (backup.config.hasOwnProperty(key)) {{
-                d.writeConfig(key, backup.config[key]);
-            }}
-        }}
+    if (backup && backup.config && backup.config.Image && backup.config.Image.length > 0) {{
+        d.wallpaperPlugin = "org.kde.image";
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        d.writeConfig("Image", backup.config.Image);
+        d.writeConfig("FillMode", 2);
         d.reloadConfig();
     }} else {{
         d.wallpaperPlugin = "org.kde.image";
@@ -515,6 +542,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         var existingImg = d.readConfig("Image");
         if (existingImg && existingImg.length > 0) {{
             d.writeConfig("Image", existingImg);
+            d.writeConfig("FillMode", 2);
+        }} else {{
+            d.writeConfig("Image", "/usr/share/wallpapers/Next/contents/images/3840x2160.png");
+            d.writeConfig("FillMode", 2);
         }}
         d.reloadConfig();
     }}
@@ -565,9 +596,25 @@ for (var i = 0; i < allDesktops.length; i++) {{
         let _ = self.mpv_backend.stop(None, &settings);
         let _ = self.plasma_mpv_backend.stop(None, &settings);
         let _ = self.plasma_backend.stop(None, &settings);
+        if settings.inactive_black_screen {
+            let _ = self.set_black_screen();
+        } else {
+            let _ = self.restore_previous_wallpaper();
+        }
+        let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
+        *self.active_wallpaper.lock().unwrap() = None;
+        Ok(())
+    }
+
+    pub fn reset_desktop(&self) -> Result<(), String> {
+        let settings = self.current_settings.lock().unwrap().clone();
+        let _ = self.mpv_backend.stop(None, &settings);
+        let _ = self.plasma_mpv_backend.stop(None, &settings);
+        let _ = self.plasma_backend.stop(None, &settings);
         let _ = self.restore_previous_wallpaper();
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
+        println!("[AnimatedLinux] Desktop unconditionally reset to static wallpaper");
         Ok(())
     }
 

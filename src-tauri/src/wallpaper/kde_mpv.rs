@@ -87,6 +87,8 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
         let restart_on_resume = settings.restart_on_resume;
         let is_paused = settings.is_paused;
 
+        let target_fps = if settings.target_fps > 0 { settings.target_fps } else { 30 };
+
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -102,7 +104,9 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("WallpaperSource", videoSource);
         d.writeConfig("DisplayMode", {display_mode});
         d.writeConfig("PauseMode", {pause_mode});
+        d.writeConfig("PauseFilterByScreen", true);
         d.writeConfig("PauseOnBatPower", {pause_on_bat});
+        d.writeConfig("Fps", {target_fps});
         d.writeConfig("MuteAudio", {is_muted});
         d.writeConfig("Volume", {volume});
         d.writeConfig("Speed", {speed});
@@ -119,6 +123,7 @@ print("Applied MPV wallpaper to target " + target);
             display_mode = display_mode,
             pause_mode = pause_mode,
             pause_on_bat = pause_on_bat,
+            target_fps = target_fps,
             is_muted = is_muted,
             volume = volume,
             speed = speed,

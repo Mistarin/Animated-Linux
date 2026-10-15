@@ -831,12 +831,14 @@ fn encode_variant_internal(
 
     // CPU Fallback via libx264 with bounded threads to prevent UI and desktop compositor stutter
     if !success {
-        let vf = format!("scale=-2:{},fps={}", max_height, fps);
+        let vf = format!("scale=-2:{},fps={},format=yuv420p", max_height, fps);
         let status = new_host_command("ffmpeg")
             .arg("-y")
             .arg("-i").arg(&input_source)
             .arg("-vf").arg(&vf)
             .arg("-c:v").arg("libx264")
+            .arg("-pix_fmt").arg("yuv420p")
+            .arg("-tune").arg("fastdecode")
             .arg("-preset").arg("veryfast")
             .arg("-threads").arg("2")
             .arg("-crf").arg(crf)

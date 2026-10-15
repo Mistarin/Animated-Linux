@@ -116,6 +116,12 @@ impl WallpaperBackend for MpvBackend {
             }
 
             mpv_opts.push("loop=inf".to_string());
+            mpv_opts.push("vd-lavc-dr=yes".to_string());
+            mpv_opts.push("vd-lavc-threads=2".to_string());
+            mpv_opts.push("video-sync=display-desync".to_string());
+            mpv_opts.push("framedrop=vo".to_string());
+            mpv_opts.push("sws-fast=yes".to_string());
+            mpv_opts.push("sws-scaler=fast-bilinear".to_string());
             mpv_opts.push(format!("input-ipc-server={}", MPV_SOCKET));
             mpv_opts.push(format!("mute={}", if settings.is_muted { "yes" } else { "no" }));
             mpv_opts.push(format!("volume={}", settings.volume));
@@ -129,24 +135,31 @@ impl WallpaperBackend for MpvBackend {
                 mpv_opts.push(format!("display-fps-override={}", settings.target_fps));
             }
 
-            // Scaling and render fidelity
+            // Scaling and render fidelity (tuned for minimum power & smooth background playback)
             match settings.quality_level {
                 1 => {
                     mpv_opts.push("scale=bilinear".to_string());
                     mpv_opts.push("dscale=bilinear".to_string());
                     mpv_opts.push("cscale=bilinear".to_string());
-                    mpv_opts.push("vd-lavc-fast".to_string());
+                    mpv_opts.push("vd-lavc-fast=yes".to_string());
                     mpv_opts.push("vd-lavc-skiploopfilter=all".to_string());
                     mpv_opts.push("deband=no".to_string());
                     mpv_opts.push("dither=no".to_string());
                 }
                 2 => {
                     mpv_opts.push("scale=bilinear".to_string());
-                    mpv_opts.push("vd-lavc-fast".to_string());
+                    mpv_opts.push("dscale=bilinear".to_string());
+                    mpv_opts.push("cscale=bilinear".to_string());
+                    mpv_opts.push("vd-lavc-fast=yes".to_string());
                     mpv_opts.push("deband=no".to_string());
                 }
                 3 => {
-                    mpv_opts.push("scale=spline36".to_string());
+                    // Default: Fast bilinear down/upscaling with no debanding overhead
+                    mpv_opts.push("scale=bilinear".to_string());
+                    mpv_opts.push("dscale=bilinear".to_string());
+                    mpv_opts.push("cscale=bilinear".to_string());
+                    mpv_opts.push("vd-lavc-fast=yes".to_string());
+                    mpv_opts.push("deband=no".to_string());
                 }
                 4 => {
                     mpv_opts.push("scale=spline36".to_string());
@@ -183,9 +196,20 @@ impl WallpaperBackend for MpvBackend {
 
             cmd.arg("-o").arg(mpv_opts.join(" "));
 
-            // Target output: '*' spans all connected Wayland outputs
-            let target_output = if let Some(_s) = screen {
-                "*".to_string()
+            // Target output: If specific monitor requested, map to display output; else span '*'
+            let target_output = if let Some(s) = screen {
+                if s >= 0 {
+                    let detected = crate::monitors::MonitorDetector::detect_monitors();
+                    if let Some(scr) = detected.iter().find(|m| m.id == s) {
+                        scr.name.clone()
+                    } else if (s as usize) < detected.len() {
+                        detected[s as usize].name.clone()
+                    } else {
+                        "*".to_string()
+                    }
+                } else {
+                    "*".to_string()
+                }
             } else {
                 "*".to_string()
             };
@@ -202,6 +226,12 @@ impl WallpaperBackend for MpvBackend {
             let mut cmd = new_host_command("mpv");
             cmd.arg(&wallpaper.file_path)
                 .arg("--loop=inf")
+                .arg("--vd-lavc-dr=yes")
+                .arg("--vd-lavc-threads=2")
+                .arg("--video-sync=display-desync")
+                .arg("--framedrop=vo")
+                .arg("--sws-fast=yes")
+                .arg("--sws-scaler=fast-bilinear")
                 .arg("--no-audio")
                 .arg(format!("--mute={}", mute_flag))
                 .arg(format!("--volume={}", volume_str))
@@ -231,18 +261,24 @@ impl WallpaperBackend for MpvBackend {
                     cmd.arg("--scale=bilinear")
                         .arg("--dscale=bilinear")
                         .arg("--cscale=bilinear")
-                        .arg("--vd-lavc-fast")
+                        .arg("--vd-lavc-fast=yes")
                         .arg("--vd-lavc-skiploopfilter=all")
                         .arg("--deband=no")
                         .arg("--dither=no");
                 }
                 2 => {
                     cmd.arg("--scale=bilinear")
-                        .arg("--vd-lavc-fast")
+                        .arg("--dscale=bilinear")
+                        .arg("--cscale=bilinear")
+                        .arg("--vd-lavc-fast=yes")
                         .arg("--deband=no");
                 }
                 3 => {
-                    cmd.arg("--scale=spline36");
+                    cmd.arg("--scale=bilinear")
+                        .arg("--dscale=bilinear")
+                        .arg("--cscale=bilinear")
+                        .arg("--vd-lavc-fast=yes")
+                        .arg("--deband=no");
                 }
                 4 => {
                     cmd.arg("--scale=spline36")

@@ -1,7 +1,7 @@
 // GPL-3.0 License
 use super::backend::{PlaybackSettings, WallpaperBackend, WallpaperItem};
+use crate::new_host_command;
 use std::path::Path;
-use std::process::Command;
 
 pub struct KdePlasmaMpvBackend;
 
@@ -11,7 +11,7 @@ impl KdePlasmaMpvBackend {
     }
 
     fn run_plasma_script(script: &str) -> Result<String, String> {
-        let output = Command::new("qdbus")
+        let output = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .arg("org.kde.PlasmaShell.evaluateScript")
@@ -34,7 +34,7 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
     }
 
     fn is_available(&self) -> bool {
-        let plasma_ok = Command::new("qdbus")
+        let plasma_ok = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .output()

@@ -1,5 +1,6 @@
 use super::backend::{PlaybackSettings, WallpaperBackend, WallpaperItem};
-use std::process::Command;
+use crate::new_host_command;
+use std::path::Path;
 
 pub struct KdePlasmaBackend;
 
@@ -9,7 +10,7 @@ impl KdePlasmaBackend {
     }
 
     fn run_plasma_script(script: &str) -> Result<String, String> {
-        let output = Command::new("qdbus")
+        let output = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .arg("org.kde.PlasmaShell.evaluateScript")
@@ -32,16 +33,25 @@ impl WallpaperBackend for KdePlasmaBackend {
     }
 
     fn is_available(&self) -> bool {
-        // Check if qdbus org.kde.plasmashell responds
-        if let Ok(output) = Command::new("qdbus")
+        // 1. Check if qdbus org.kde.plasmashell responds
+        let plasma_ok = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .output()
-        {
-            output.status.success()
-        } else {
-            false
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !plasma_ok {
+            return false;
         }
+
+        // 2. Check if the Smart Video Wallpaper Reborn plugin is installed
+        let local_path = dirs::data_local_dir()
+            .map(|p| p.join("plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn").exists())
+            .unwrap_or(false);
+        let system_path = Path::new("/usr/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn").exists();
+
+        local_path || system_path
     }
 
     fn apply(&self, wallpaper: &WallpaperItem, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {

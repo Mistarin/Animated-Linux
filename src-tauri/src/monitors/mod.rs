@@ -1,5 +1,5 @@
 use crate::wallpaper::backend::ScreenInfo;
-use std::process::Command;
+use crate::new_host_command;
 
 pub struct MonitorDetector;
 
@@ -8,7 +8,7 @@ impl MonitorDetector {
         let mut screens = Vec::new();
 
         // 1. Try querying Plasma Shell desktops
-        if let Ok(output) = Command::new("qdbus")
+        if let Ok(output) = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .arg("org.kde.PlasmaShell.evaluateScript")

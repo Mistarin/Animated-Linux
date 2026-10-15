@@ -47,7 +47,16 @@ fi
 
 # Update current user session environment via systemd if available
 if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user set-environment QML2_IMPORT_PATH="${HOME}/.local/lib/qt6/qml" || true
+    systemctl --user set-environment QML2_IMPORT_PATH="${HOME}/.local/lib/qt6/qml:${QML2_IMPORT_PATH:-}" || true
+    # If plasmashell is running and hasn't picked up QML2_IMPORT_PATH, restart it so the plugin loads
+    if pgrep -x plasmashell >/dev/null 2>&1; then
+        PLASMA_PID="$(pgrep -x plasmashell | head -n1)"
+        if ! grep -q "QML2_IMPORT_PATH" "/proc/${PLASMA_PID}/environ" 2>/dev/null; then
+            echo "[Installer] Reloading plasma-plasmashell to register updated QML plugin paths..."
+            systemctl --user restart plasma-plasmashell.service || true
+        fi
+    fi
 fi
 
 echo "[Installer] KDE Plasma MPV plugin setup is complete."
+

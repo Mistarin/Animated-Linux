@@ -20,6 +20,57 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub fn new_host_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    let mut cmd = Command::new(program);
+    // If running inside an AppImage, restore original host environment so external binaries (mpv, ffmpeg, qdbus) load host GPU drivers
+    if let Ok(orig_ld) = std::env::var("LD_LIBRARY_PATH_ORIG") {
+        cmd.env("LD_LIBRARY_PATH", orig_ld);
+    } else if let Ok(orig_ld) = std::env::var("ORIG_LD_LIBRARY_PATH") {
+        cmd.env("LD_LIBRARY_PATH", orig_ld);
+    } else if let Ok(appdir) = std::env::var("APPDIR") {
+        if let Ok(cur_ld) = std::env::var("LD_LIBRARY_PATH") {
+            let filtered: Vec<&str> = cur_ld
+                .split(':')
+                .filter(|p| !p.contains(&appdir) && !p.contains(".mount_"))
+                .collect();
+            if filtered.is_empty() {
+                cmd.env_remove("LD_LIBRARY_PATH");
+            } else {
+                cmd.env("LD_LIBRARY_PATH", filtered.join(":"));
+            }
+        }
+    } else if let Ok(cur_ld) = std::env::var("LD_LIBRARY_PATH") {
+        if cur_ld.contains(".mount_") {
+            let filtered: Vec<&str> = cur_ld
+                .split(':')
+                .filter(|p| !p.contains(".mount_"))
+                .collect();
+            if filtered.is_empty() {
+                cmd.env_remove("LD_LIBRARY_PATH");
+            } else {
+                cmd.env("LD_LIBRARY_PATH", filtered.join(":"));
+            }
+        }
+    }
+
+    if let Ok(preload) = std::env::var("LD_PRELOAD") {
+        if preload.contains(".mount_") {
+            cmd.env_remove("LD_PRELOAD");
+        }
+    }
+
+    for driver_var in &["LIBVA_DRIVERS_PATH", "LIBGL_DRIVERS_PATH", "__EGL_VENDOR_LIBRARY_DIRS"] {
+        if let Ok(val) = std::env::var(driver_var) {
+            if val.contains(".mount_") {
+                cmd.env_remove(driver_var);
+            }
+        }
+    }
+
+    cmd
+}
+
+
 pub struct AppState {
     pub wallpaper_mgr: Arc<WallpaperManager>,
     pub steam_mgr: Arc<SteamManager>,
@@ -54,8 +105,8 @@ fn import_single_file_to_storage(wp_mgr: &WallpaperManager, source_path: &str) -
     // Copy video file
     std::fs::copy(src, &dest_video).map_err(|e| format!("Failed to copy video: {}", e))?;
 
-    // Extract thumbnail using ffmpeg
-    let _ = Command::new("ffmpeg")
+    // Extract thumbnail using ffmpeg with host environment
+    let _ = new_host_command("ffmpeg")
         .arg("-y")
         .arg("-ss").arg("00:00:01")
         .arg("-i").arg(&dest_video)
@@ -111,7 +162,7 @@ async fn get_quick_preview(source_path: String) -> Result<String, String> {
         }
 
         // Fast extraction of preview frame via ffmpeg directly to stdout
-        let out = Command::new("ffmpeg")
+        let out = new_host_command("ffmpeg")
             .arg("-y")
             .arg("-ss").arg("00:00:01")
             .arg("-i").arg(&source_path)
@@ -129,7 +180,7 @@ async fn get_quick_preview(source_path: String) -> Result<String, String> {
             Ok(format!("data:image/jpeg;base64,{}", b64))
         } else {
             // Fallback: try taking frame at 00:00:00
-            let out2 = Command::new("ffmpeg")
+            let out2 = new_host_command("ffmpeg")
                 .arg("-y")
                 .arg("-ss").arg("00:00:00")
                 .arg("-i").arg(&source_path)
@@ -159,7 +210,7 @@ fn pick_video_paths_internal() -> Vec<String> {
     let mut paths_to_import: Vec<String> = Vec::new();
 
     // 1. Try kdialog (native KDE file dialog)
-    if let Ok(out) = Command::new("kdialog")
+    if let Ok(out) = new_host_command("kdialog")
         .arg("--getopenfilename")
         .arg("--multiple")
         .arg(&home)
@@ -179,7 +230,7 @@ fn pick_video_paths_internal() -> Vec<String> {
 
     // 2. Try zenity fallback
     if paths_to_import.is_empty() {
-        if let Ok(out) = Command::new("zenity")
+        if let Ok(out) = new_host_command("zenity")
             .arg("--file-selection")
             .arg("--multiple")
             .arg("--separator=|")
@@ -206,7 +257,7 @@ fn pick_video_folder_internal() -> Option<String> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
 
     // 1. Try kdialog (native KDE file dialog)
-    if let Ok(out) = Command::new("kdialog")
+    if let Ok(out) = new_host_command("kdialog")
         .arg("--getexistingdirectory")
         .arg(&home)
         .arg("--title")
@@ -223,7 +274,7 @@ fn pick_video_folder_internal() -> Option<String> {
     }
 
     // 2. Try zenity fallback
-    if let Ok(out) = Command::new("zenity")
+    if let Ok(out) = new_host_command("zenity")
         .arg("--file-selection")
         .arg("--directory")
         .arg("--title=Select Video Folder to Import")
@@ -760,7 +811,7 @@ fn encode_variant_internal(
     // Fast Hardware Accelerated Encoding via VA-API (Intel / AMD)
     if render_node.exists() {
         let vaapi_vf = format!("fps={},format=nv12,hwupload,scale_vaapi=w=-2:h={}", fps, max_height);
-        let status = Command::new("ffmpeg")
+        let status = new_host_command("ffmpeg")
             .arg("-y")
             .arg("-vaapi_device").arg("/dev/dri/renderD128")
             .arg("-i").arg(&input_source)
@@ -781,7 +832,7 @@ fn encode_variant_internal(
     // CPU Fallback via libx264 with bounded threads to prevent UI and desktop compositor stutter
     if !success {
         let vf = format!("scale=-2:{},fps={}", max_height, fps);
-        let status = Command::new("ffmpeg")
+        let status = new_host_command("ffmpeg")
             .arg("-y")
             .arg("-i").arg(&input_source)
             .arg("-vf").arg(&vf)
@@ -1163,7 +1214,7 @@ fn uuid_simple() -> String {
 }
 
 fn get_video_resolution(path: &Path) -> Option<String> {
-    let out = Command::new("ffprobe")
+    let out = new_host_command("ffprobe")
         .arg("-v").arg("error")
         .arg("-select_streams").arg("v:0")
         .arg("-show_entries").arg("stream=width,height")
@@ -1181,7 +1232,7 @@ fn get_video_resolution(path: &Path) -> Option<String> {
 }
 
 fn get_video_duration(path: &Path) -> Option<f64> {
-    let out = Command::new("ffprobe")
+    let out = new_host_command("ffprobe")
         .arg("-v").arg("error")
         .arg("-show_entries").arg("format=duration")
         .arg("-of").arg("default=noprint_wrappers=1:nokey=1")
@@ -1204,7 +1255,7 @@ pub struct CacheStats {
 #[tauri::command]
 fn open_storage_dir(state: State<'_, AppState>) -> Result<(), String> {
     let dir = state.wallpaper_mgr.get_storage_dir();
-    Command::new("xdg-open")
+    new_host_command("xdg-open")
         .arg(&dir)
         .spawn()
         .map_err(|e| format!("Failed to open directory with xdg-open: {}", e))?;
@@ -1493,15 +1544,15 @@ fn set_app_menu_entry(enable: bool) -> Result<bool, String> {
         );
 
         std::fs::write(&desktop_file, desktop_content).map_err(|e| format!("Failed to write application menu desktop entry: {}", e))?;
-        let _ = Command::new("update-desktop-database").arg(&apps_dir).output();
-        let _ = Command::new("kbuildsycoca6").output();
+        let _ = new_host_command("update-desktop-database").arg(&apps_dir).output();
+        let _ = new_host_command("kbuildsycoca6").output();
         Ok(true)
     } else {
         if desktop_file.exists() {
             std::fs::remove_file(&desktop_file).map_err(|e| format!("Failed to remove application menu desktop entry: {}", e))?;
         }
-        let _ = Command::new("update-desktop-database").arg(&apps_dir).output();
-        let _ = Command::new("kbuildsycoca6").output();
+        let _ = new_host_command("update-desktop-database").arg(&apps_dir).output();
+        let _ = new_host_command("kbuildsycoca6").output();
         Ok(false)
     }
 }

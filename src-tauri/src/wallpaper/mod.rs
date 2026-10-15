@@ -7,7 +7,7 @@ use backend::{DesktopWallpaperBackup, PlaybackSettings, WallpaperBackend, Wallpa
 use kde_plasma::KdePlasmaBackend;
 use kde_mpv::KdePlasmaMpvBackend;
 use mpv_engine::MpvBackend;
-use std::process::Command;
+use crate::new_host_command;
 use std::sync::Mutex;
 use std::path::{Path, PathBuf};
 
@@ -315,7 +315,7 @@ for (var i = 0; i < allDesktops.length; i++) {
 print(JSON.stringify(results));
 "##;
 
-        if let Ok(output) = Command::new("qdbus")
+        if let Ok(output) = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .arg("org.kde.PlasmaShell.evaluateScript")
@@ -523,7 +523,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             backups_json = backups_json
         );
 
-        let output = Command::new("qdbus")
+        let output = new_host_command("qdbus")
             .arg("org.kde.plasmashell")
             .arg("/PlasmaShell")
             .arg("org.kde.PlasmaShell.evaluateScript")

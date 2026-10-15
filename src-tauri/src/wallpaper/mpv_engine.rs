@@ -1,5 +1,6 @@
 use super::backend::{PlaybackSettings, WallpaperBackend, WallpaperItem};
-use std::process::{Child, Command};
+use std::process::Child;
+use crate::new_host_command;
 use std::sync::Mutex;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -48,7 +49,7 @@ impl MpvBackend {
             }
         }
         // 3. Check system PATH
-        if let Ok(output) = Command::new("which").arg("mpvpaper").output() {
+        if let Ok(output) = new_host_command("which").arg("mpvpaper").output() {
             if output.status.success() {
                 let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !path_str.is_empty() {
@@ -75,7 +76,7 @@ impl WallpaperBackend for MpvBackend {
 
     fn is_available(&self) -> bool {
         Self::find_mpvpaper_bin().is_some()
-            || Command::new("which").arg("mpv").output().map(|o| o.status.success()).unwrap_or(false)
+            || new_host_command("which").arg("mpv").output().map(|o| o.status.success()).unwrap_or(false)
     }
 
     fn apply(&self, wallpaper: &WallpaperItem, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
@@ -94,7 +95,7 @@ impl WallpaperBackend for MpvBackend {
 
         let child = if is_wayland && mpvpaper_bin.is_some() {
             let bin = mpvpaper_bin.unwrap();
-            let mut cmd = Command::new(bin);
+            let mut cmd = new_host_command(bin);
 
             // Layer: bottom places the wallpaper directly beneath application windows and above desktop background
             cmd.arg("-l").arg("bottom");
@@ -109,7 +110,7 @@ impl WallpaperBackend for MpvBackend {
             // Build space-separated MPV options for mpvpaper -o
             let mut mpv_opts = Vec::new();
             if settings.hardware_accel {
-                mpv_opts.push("hwdec=vaapi".to_string());
+                mpv_opts.push("hwdec=auto-safe".to_string());
             } else {
                 mpv_opts.push("hwdec=no".to_string());
             }
@@ -125,7 +126,7 @@ impl WallpaperBackend for MpvBackend {
 
             if settings.target_fps > 0 {
                 mpv_opts.push(format!("vf=fps={}", settings.target_fps));
-                mpv_opts.push(format!("override-display-fps={}", settings.target_fps));
+                mpv_opts.push(format!("display-fps-override={}", settings.target_fps));
             }
 
             // Scaling and render fidelity
@@ -198,7 +199,7 @@ impl WallpaperBackend for MpvBackend {
             let volume_str = settings.volume.to_string();
             let speed_str = settings.speed.to_string();
 
-            let mut cmd = Command::new("mpv");
+            let mut cmd = new_host_command("mpv");
             cmd.arg(&wallpaper.file_path)
                 .arg("--loop=inf")
                 .arg("--no-audio")
@@ -222,7 +223,7 @@ impl WallpaperBackend for MpvBackend {
 
             if settings.target_fps > 0 {
                 cmd.arg(format!("--vf=fps={}", settings.target_fps));
-                cmd.arg(format!("--override-display-fps={}", settings.target_fps));
+                cmd.arg(format!("--display-fps-override={}", settings.target_fps));
             }
 
             match settings.quality_level {

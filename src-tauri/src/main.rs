@@ -797,7 +797,7 @@ fn encode_variant_internal(
         match quality_level {
             1 => 24,
             2 => 30,
-            3 => 60,
+            3 => 30,
             4 => 60,
             _ => 30,
         }

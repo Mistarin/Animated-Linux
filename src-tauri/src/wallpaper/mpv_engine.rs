@@ -97,8 +97,8 @@ impl WallpaperBackend for MpvBackend {
             let bin = mpvpaper_bin.unwrap();
             let mut cmd = new_host_command(bin);
 
-            // Layer: bottom places the wallpaper directly beneath application windows and above desktop background
-            cmd.arg("-l").arg("bottom");
+            // Layer: background places the wallpaper in the native Wayland desktop background layer
+            cmd.arg("-l").arg("background");
 
             // Automatic pause policies for Wayland compositors
             match settings.pause_policy {
@@ -111,6 +111,7 @@ impl WallpaperBackend for MpvBackend {
             let mut mpv_opts = Vec::new();
             if settings.hardware_accel {
                 mpv_opts.push("hwdec=auto-safe".to_string());
+                mpv_opts.push("hwdec-codecs=all".to_string());
             } else {
                 mpv_opts.push("hwdec=no".to_string());
             }
@@ -122,9 +123,18 @@ impl WallpaperBackend for MpvBackend {
             mpv_opts.push("framedrop=vo".to_string());
             mpv_opts.push("sws-fast=yes".to_string());
             mpv_opts.push("sws-scaler=fast-bilinear".to_string());
+            mpv_opts.push("opengl-pbo=yes".to_string());
+            mpv_opts.push("dither-depth=no".to_string());
+            mpv_opts.push("correct-pts=no".to_string());
+            mpv_opts.push("demuxer-max-bytes=50M".to_string());
+            mpv_opts.push("cache=yes".to_string());
+
             mpv_opts.push(format!("input-ipc-server={}", MPV_SOCKET));
-            mpv_opts.push(format!("mute={}", if settings.is_muted { "yes" } else { "no" }));
-            mpv_opts.push(format!("volume={}", settings.volume));
+            if settings.is_muted {
+                mpv_opts.push("audio=no".to_string());
+            } else {
+                mpv_opts.push(format!("volume={}", settings.volume));
+            }
             mpv_opts.push(format!("speed={}", settings.speed));
             if settings.is_paused {
                 mpv_opts.push("pause=yes".to_string());
@@ -219,7 +229,6 @@ impl WallpaperBackend for MpvBackend {
             cmd.spawn().map_err(|e| format!("Failed to start mpvpaper: {}", e))?
         } else {
             // Standalone MPV fallback (X11 / embedded window)
-            let mute_flag = if settings.is_muted { "yes" } else { "no" };
             let volume_str = settings.volume.to_string();
             let speed_str = settings.speed.to_string();
 
@@ -232,15 +241,24 @@ impl WallpaperBackend for MpvBackend {
                 .arg("--framedrop=vo")
                 .arg("--sws-fast=yes")
                 .arg("--sws-scaler=fast-bilinear")
-                .arg("--no-audio")
-                .arg(format!("--mute={}", mute_flag))
-                .arg(format!("--volume={}", volume_str))
+                .arg("--opengl-pbo=yes")
+                .arg("--dither-depth=no")
+                .arg("--correct-pts=no")
+                .arg("--demuxer-max-bytes=50M")
+                .arg("--cache=yes")
                 .arg(format!("--speed={}", speed_str))
                 .arg(format!("--input-ipc-server={}", MPV_SOCKET))
                 .arg("--wid=0");
 
+            if settings.is_muted {
+                cmd.arg("--audio=no");
+            } else {
+                cmd.arg(format!("--volume={}", volume_str));
+            }
+
             if settings.hardware_accel {
-                cmd.arg("--hwdec=auto-safe");
+                cmd.arg("--hwdec=auto-safe")
+                    .arg("--hwdec-codecs=all");
             } else {
                 cmd.arg("--hwdec=no");
             }

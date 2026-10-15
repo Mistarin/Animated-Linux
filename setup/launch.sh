@@ -6,17 +6,47 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-APP_BIN="animated-linux"
-RELEASE_BIN="$ROOT_DIR/src-tauri/target/release/$APP_BIN"
-TARGET_BIN="$ROOT_DIR/dist/animated-linux-x86_64"
+APP_NAME="animated-linux"
+DIST_DIR="$ROOT_DIR/dist"
+APPIMAGE_BIN="$DIST_DIR/Animated_Linux-x86_64.AppImage"
+USER_APPIMAGE="$HOME/Applications/Animated_Linux-x86_64.AppImage"
+RELEASE_EXE="$DIST_DIR/animated-linux-x86_64"
+CARGO_RELEASE_EXE="$ROOT_DIR/src-tauri/target/release/$APP_NAME"
 
 # Force GTK and WebKitGTK to prefer dark theme
 export GTK_THEME="Adwaita:dark"
 export GTK_APPLICATION_PREFER_DARK_THEME="1"
 
-echo "================================================================"
-echo "          Animated Linux Launcher                               "
-echo "================================================================"
+print_header() {
+    echo "================================================================"
+    echo "          Animated Linux Launcher                               "
+    echo "================================================================"
+}
+
+show_help() {
+    print_header
+    echo "Usage: ./setup/launch.sh [OPTIONS] [-- APP_ARGS...]"
+    echo ""
+    echo "Priority & Availability Launching:"
+    echo "  By default, launches available targets in order of priority:"
+    echo "    1. Standalone AppImage (dist/Animated_Linux-x86_64.AppImage)"
+    echo "    2. Standalone Native Binary (dist/animated-linux-x86_64)"
+    echo "    3. Auto-builds release binary if no build exists yet"
+    echo ""
+    echo "Options:"
+    echo "  --appimage        Force launching the standalone AppImage package"
+    echo "  --bin, --binary   Force launching the native compiled binary"
+    echo "  --dev             Launch directly from source code with Live HMR (launch-dev.sh)"
+    echo "  --build           Force rebuild before launching"
+    echo "  -h, --help        Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ./run.sh                  # Launch preferred available build (AppImage -> binary)"
+    echo "  ./run.sh --dev            # Run development server with live reload"
+    echo "  ./run.sh --bin            # Force running the native release executable"
+    echo "  ./run.sh --build          # Rebuild and run latest release"
+    exit 0
+}
 
 # Ensure KDE Plasma MPV plugin environment if running under Plasma
 if [ "${XDG_CURRENT_DESKTOP:-}" = "KDE" ] || command -v qdbus >/dev/null 2>&1; then
@@ -28,98 +58,133 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "[Warning] ffmpeg not found in PATH. Video thumbnail generation may fail."
 fi
 
-# Check for flags
-USE_RELEASE=0
+# Parse launcher options
+TARGET_MODE="auto" # auto | appimage | binary | dev
 FORCE_BUILD=0
-for arg in "$@"; do
-    if [ "$arg" = "--release" ] || [ "$arg" = "--prod" ] || [ "$arg" = "--binary" ]; then
-        USE_RELEASE=1
-    elif [ "$arg" = "--build" ]; then
-        FORCE_BUILD=1
-        USE_RELEASE=1
-    elif [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
-        echo "Usage: ./setup/launch.sh [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "  (default)     Run directly from source code via 'pnpm tauri dev' (Live HMR)"
-        echo "  --release     Run precompiled standalone production binary"
-        echo "  --build       Force rebuild of standalone production binary"
-        echo "  -h, --help    Show this help message"
-        exit 0
-    fi
+PASSTHROUGH_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dev)
+            TARGET_MODE="dev"
+            shift
+            ;;
+        --appimage)
+            TARGET_MODE="appimage"
+            shift
+            ;;
+        --bin|--binary|--release|--prod)
+            TARGET_MODE="binary"
+            shift
+            ;;
+        --build)
+            FORCE_BUILD=1
+            shift
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        --)
+            shift
+            PASSTHROUGH_ARGS+=("$@")
+            break
+            ;;
+        *)
+            PASSTHROUGH_ARGS+=("$1")
+            shift
+            ;;
+    esac
 done
 
-cleanup_port() {
-    local port="$1"
-    local pids=""
-    if command -v lsof >/dev/null 2>&1; then
-        pids="$(lsof -ti :"$port" 2>/dev/null || true)"
-    elif command -v fuser >/dev/null 2>&1; then
-        pids="$(fuser "$port"/tcp 2>/dev/null || true)"
-    fi
-
-    if [ -n "$pids" ]; then
-        echo "[Launcher] Port $port is already in use by PID(s): $pids"
-        echo "[Launcher] Terminating stale process on port $port..."
-        kill -15 $pids 2>/dev/null || true
-        sleep 0.5
-        local remaining=""
-        if command -v lsof >/dev/null 2>&1; then
-            remaining="$(lsof -ti :"$port" 2>/dev/null || true)"
-        fi
-        if [ -n "$remaining" ]; then
-            kill -9 $remaining 2>/dev/null || true
-            sleep 0.2
-        fi
-        echo "[Launcher] Port $port is now free."
-    fi
-}
-
-# 1. Default: Run directly from source code with Live HMR & incremental compile
-if [ "$USE_RELEASE" -eq 0 ]; then
-    cleanup_port 1420
-    if [ ! -d "$ROOT_DIR/node_modules" ] || [ ! -f "$ROOT_DIR/node_modules/@tauri-apps/cli/package.json" ]; then
-        echo "[Launcher] Installing dependencies via pnpm..."
-        pnpm install
-    fi
-    echo "[Launcher] Running directly from source code (Live HMR)..."
-    exec pnpm tauri dev
+# If development mode requested, delegate directly to launch-dev.sh
+if [ "$TARGET_MODE" = "dev" ]; then
+    exec "$ROOT_DIR/setup/launch-dev.sh" "${PASSTHROUGH_ARGS[@]}"
 fi
 
-# 2. Release mode requested: Check if binary is missing or source code has changed
-NEED_BUILD=0
-HASH_FILE="$ROOT_DIR/.last_build_hash"
+print_header
 
-compute_source_hash() {
-    if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        (git rev-parse HEAD 2>/dev/null && git status --porcelain 2>/dev/null) | sha256sum | awk '{print $1}'
+# Handle forced build
+if [ "$FORCE_BUILD" -eq 1 ]; then
+    echo "[Launcher] Force rebuild requested. Running build script..."
+    if [ "$TARGET_MODE" = "appimage" ]; then
+        bash "$ROOT_DIR/setup/build_image.sh" --bundle
     else
-        find "$ROOT_DIR/src" "$ROOT_DIR/src-tauri/src" "$ROOT_DIR/src-tauri/tauri.conf.json" "$ROOT_DIR/index.html" -type f -exec sha256sum {} + 2>/dev/null | sort | sha256sum | awk '{print $1}'
+        bash "$ROOT_DIR/setup/build_image.sh" --binary-only
     fi
-}
-
-CURRENT_HASH="$(compute_source_hash)"
-
-if [ ! -f "$RELEASE_BIN" ] || [ ! -f "$TARGET_BIN" ] || [ "$FORCE_BUILD" -eq 1 ]; then
-    NEED_BUILD=1
-elif [ ! -f "$HASH_FILE" ] || [ "$(cat "$HASH_FILE" 2>/dev/null)" != "$CURRENT_HASH" ]; then
-    echo "[Launcher] Source changes detected. Rebuilding production release binary..."
-    NEED_BUILD=1
 fi
 
-if [ "$NEED_BUILD" -eq 1 ]; then
-    bash "$ROOT_DIR/setup/build_image.sh" --binary-only
-    echo "$CURRENT_HASH" > "$HASH_FILE"
+# Locate existing targets based on priority and availability
+FOUND_APPIMAGE=""
+if [ -f "$APPIMAGE_BIN" ] && [ -x "$APPIMAGE_BIN" ]; then
+    FOUND_APPIMAGE="$APPIMAGE_BIN"
+elif [ -f "$USER_APPIMAGE" ] && [ -x "$USER_APPIMAGE" ]; then
+    FOUND_APPIMAGE="$USER_APPIMAGE"
 fi
 
-if [ ! -f "$TARGET_BIN" ]; then
-    TARGET_BIN="$RELEASE_BIN"
+FOUND_BINARY=""
+if [ -f "$RELEASE_EXE" ] && [ -x "$RELEASE_EXE" ]; then
+    FOUND_BINARY="$RELEASE_EXE"
+elif [ -f "$CARGO_RELEASE_EXE" ] && [ -x "$CARGO_RELEASE_EXE" ]; then
+    FOUND_BINARY="$CARGO_RELEASE_EXE"
 fi
 
-if [ -f "$TARGET_BIN" ]; then
-    echo "[Launcher] Starting optimized production release binary ($APP_BIN)..."
-    exec "$TARGET_BIN" "$@"
+SELECTED_EXEC=""
+EXEC_TYPE=""
+
+if [ "$TARGET_MODE" = "appimage" ]; then
+    if [ -z "$FOUND_APPIMAGE" ]; then
+        echo "[Launcher] AppImage requested but not found. Building AppImage..."
+        bash "$ROOT_DIR/setup/build_image.sh" --bundle
+        if [ -f "$APPIMAGE_BIN" ]; then
+            FOUND_APPIMAGE="$APPIMAGE_BIN"
+        fi
+    fi
+    SELECTED_EXEC="$FOUND_APPIMAGE"
+    EXEC_TYPE="AppImage package"
+elif [ "$TARGET_MODE" = "binary" ]; then
+    if [ -z "$FOUND_BINARY" ]; then
+        echo "[Launcher] Native executable requested but not found. Building release binary..."
+        bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+        if [ -f "$RELEASE_EXE" ]; then
+            FOUND_BINARY="$RELEASE_EXE"
+        elif [ -f "$CARGO_RELEASE_EXE" ]; then
+            FOUND_BINARY="$CARGO_RELEASE_EXE"
+        fi
+    fi
+    SELECTED_EXEC="$FOUND_BINARY"
+    EXEC_TYPE="Native binary"
 else
-    echo "[Error] Failed to build or find release binary."
+    # Auto Mode: Priority 1: AppImage, Priority 2: Native Executable
+    if [ -n "$FOUND_APPIMAGE" ]; then
+        SELECTED_EXEC="$FOUND_APPIMAGE"
+        EXEC_TYPE="AppImage package (Priority 1)"
+    elif [ -n "$FOUND_BINARY" ]; then
+        SELECTED_EXEC="$FOUND_BINARY"
+        EXEC_TYPE="Native binary (Priority 2)"
+    else
+        echo "[Launcher] No pre-built AppImage or executable found."
+        echo "[Launcher] Auto-building standalone release binary..."
+        bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+        if [ -f "$RELEASE_EXE" ]; then
+            SELECTED_EXEC="$RELEASE_EXE"
+        elif [ -f "$CARGO_RELEASE_EXE" ]; then
+            SELECTED_EXEC="$CARGO_RELEASE_EXE"
+        fi
+        EXEC_TYPE="Newly built native binary"
+    fi
+fi
+
+if [ -n "$SELECTED_EXEC" ] && [ -f "$SELECTED_EXEC" ]; then
+    echo "[Launcher] Launching: $SELECTED_EXEC [$EXEC_TYPE]"
+    
+    # If launching AppImage, ensure execution compatibility with or without FUSE
+    if [[ "$SELECTED_EXEC" == *".AppImage" ]]; then
+        export APPIMAGE_EXTRACT_AND_RUN=1
+    fi
+    
+    exec "$SELECTED_EXEC" "${PASSTHROUGH_ARGS[@]}"
+else
+    echo "[Error] Could not find or build a valid executable to launch."
+    echo "Tip: Run './setup/build_image.sh' to compile, or './setup/launch-dev.sh' to run live from source."
     exit 1
 fi

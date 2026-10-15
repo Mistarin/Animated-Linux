@@ -22,6 +22,7 @@ pnpm-debug.log*
 /wallpapers/thumbnails/*.png
 /wallpapers/library.json
 /wallpapers/active.json
+/wallpapers/previous_wallpaper.json
 /wallpapers/backend.json
 /wallpapers/settings.json
 

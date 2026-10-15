@@ -3,10 +3,11 @@ pub mod kde_plasma;
 pub mod kde_mpv;
 pub mod mpv_engine;
 
-use backend::{PlaybackSettings, WallpaperBackend, WallpaperItem};
+use backend::{DesktopWallpaperBackup, PlaybackSettings, WallpaperBackend, WallpaperItem};
 use kde_plasma::KdePlasmaBackend;
 use kde_mpv::KdePlasmaMpvBackend;
 use mpv_engine::MpvBackend;
+use std::process::Command;
 use std::sync::Mutex;
 use std::path::{Path, PathBuf};
 
@@ -242,7 +243,76 @@ impl WallpaperManager {
         }
     }
 
+    pub fn ensure_previous_wallpaper_cached(&self) {
+        let backup_file = self.storage_dir.join("previous_wallpaper.json");
+        if backup_file.exists() {
+            return;
+        }
+
+        // Query Plasma desktops via qdbus evaluateScript
+        let script = r##"
+var allDesktops = desktops();
+var results = [];
+for (var i = 0; i < allDesktops.length; i++) {
+    var d = allDesktops[i];
+    var plugin = d.wallpaperPlugin;
+    if (plugin === "com.github.catsout.wallpaperEngineKde" || plugin === "luisbocanegra.smart.video.wallpaper.reborn" || plugin === "org.kde.color") {
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        var img = d.readConfig("Image");
+        var fill = d.readConfig("FillMode");
+        var col = d.readConfig("Color");
+        results.push({
+            screen: d.screen,
+            plugin: "org.kde.image",
+            config: {
+                "Image": img ? img : "",
+                "FillMode": fill ? fill : "2",
+                "Color": col ? col : "#000000"
+            }
+        });
+    } else {
+        d.currentConfigGroup = Array("Wallpaper", plugin, "General");
+        var img = d.readConfig("Image");
+        var fill = d.readConfig("FillMode");
+        var col = d.readConfig("Color");
+        results.push({
+            screen: d.screen,
+            plugin: plugin,
+            config: {
+                "Image": img ? img : "",
+                "FillMode": fill ? fill : "",
+                "Color": col ? col : ""
+            }
+        });
+    }
+}
+print(JSON.stringify(results));
+"##;
+
+        if let Ok(output) = Command::new("qdbus")
+            .arg("org.kde.plasmashell")
+            .arg("/PlasmaShell")
+            .arg("org.kde.PlasmaShell.evaluateScript")
+            .arg(script)
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !stdout.is_empty() {
+                    if let Ok(backups) = serde_json::from_str::<Vec<DesktopWallpaperBackup>>(&stdout) {
+                        if !backups.is_empty() {
+                            println!("[AnimatedLinux] Cached {} previous desktop wallpaper configuration(s)", backups.len());
+                            let _ = std::fs::write(&backup_file, serde_json::to_string_pretty(&backups).unwrap_or(stdout));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn apply_wallpaper(&self, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
+        self.ensure_previous_wallpaper_cached();
+
         let settings = self.current_settings.lock().unwrap().clone();
         let backend = self.get_active_backend();
         println!("[AnimatedLinux] Applying wallpaper via {}", backend.name());
@@ -355,11 +425,86 @@ impl WallpaperManager {
         backend.set_geometry(fill_mode, pan_x, pan_y)
     }
 
+    pub fn restore_previous_wallpaper(&self) -> Result<(), String> {
+        let backup_file = self.storage_dir.join("previous_wallpaper.json");
+        let backups: Vec<DesktopWallpaperBackup> = if backup_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&backup_file) {
+                serde_json::from_str::<Vec<DesktopWallpaperBackup>>(&content).unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let _ = std::fs::remove_file(&backup_file);
+
+        let backups_json = serde_json::to_string(&backups).unwrap_or_else(|_| "[]".to_string());
+        let script = format!(
+            r#"
+var allDesktops = desktops();
+var backups = {backups_json};
+
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    var backup = null;
+    for (var j = 0; j < backups.length; j++) {{
+        if (backups[j].screen === d.screen) {{
+            backup = backups[j];
+            break;
+        }}
+    }}
+    if (!backup && backups.length > 0) {{
+        backup = backups[0];
+    }}
+
+    if (backup) {{
+        d.wallpaperPlugin = backup.plugin;
+        d.currentConfigGroup = Array("Wallpaper", backup.plugin, "General");
+        for (var key in backup.config) {{
+            if (backup.config.hasOwnProperty(key)) {{
+                d.writeConfig(key, backup.config[key]);
+            }}
+        }}
+        d.reloadConfig();
+    }} else {{
+        d.wallpaperPlugin = "org.kde.image";
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        var existingImg = d.readConfig("Image");
+        if (existingImg && existingImg.length > 0) {{
+            d.writeConfig("Image", existingImg);
+        }}
+        d.reloadConfig();
+    }}
+}}
+"#,
+            backups_json = backups_json
+        );
+
+        let output = Command::new("qdbus")
+            .arg("org.kde.plasmashell")
+            .arg("/PlasmaShell")
+            .arg("org.kde.PlasmaShell.evaluateScript")
+            .arg(&script)
+            .output()
+            .map_err(|e| format!("Failed to run Plasma evaluateScript: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("[AnimatedLinux] Warning restoring wallpaper: {}", stderr);
+        } else {
+            println!("[AnimatedLinux] Desktop wallpaper safely restored to previous configuration");
+        }
+
+        Ok(())
+    }
+
     pub fn stop(&self) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let _ = self.mpv_backend.stop(None, &settings);
         let _ = self.plasma_mpv_backend.stop(None, &settings);
         let _ = self.plasma_backend.stop(None, &settings);
+        let _ = self.restore_previous_wallpaper();
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
         Ok(())
@@ -396,5 +541,34 @@ impl WallpaperManager {
         let json = serde_json::to_string_pretty(items).map_err(|e| e.to_string())?;
         std::fs::write(&self.library_path, json).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_desktop_wallpaper_backup_serde() {
+        let mut config = std::collections::HashMap::new();
+        config.insert("Image".to_string(), "file:///tmp/test.jpg".to_string());
+        config.insert("FillMode".to_string(), "2".to_string());
+        config.insert("Color".to_string(), "#000000".to_string());
+
+        let backup = DesktopWallpaperBackup {
+            screen: 0,
+            plugin: "org.kde.image".to_string(),
+            config,
+        };
+
+        let json = serde_json::to_string(&vec![backup]).unwrap();
+        assert!(json.contains("org.kde.image"));
+        assert!(json.contains("file:///tmp/test.jpg"));
+
+        let deserialized: Vec<DesktopWallpaperBackup> = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.len(), 1);
+        assert_eq!(deserialized[0].screen, 0);
+        assert_eq!(deserialized[0].plugin, "org.kde.image");
+        assert_eq!(deserialized[0].config.get("Image").unwrap(), "file:///tmp/test.jpg");
     }
 }

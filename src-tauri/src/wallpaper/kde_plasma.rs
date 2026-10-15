@@ -266,31 +266,22 @@ for (var i = 0; i < allDesktops.length; i++) {{
         Ok(())
     }
 
-    fn stop(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
+    fn stop(&self, screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
-        let plugin = if settings.inactive_black_screen {
-            "org.kde.color"
-        } else {
-            "org.kde.image"
-        };
         let script = format!(
-            r##"
+            r#"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
-        d.wallpaperPlugin = "{plugin}";
-        d.currentConfigGroup = Array("Wallpaper", "{plugin}", "General");
-        if ("{plugin}" === "org.kde.color") {{
-            d.writeConfig("Color", "#000000");
-        }}
+        d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+        d.writeConfig("VideoUrls", "[]");
         d.reloadConfig();
     }}
 }}
-"##,
-            target_screen = target_screen,
-            plugin = plugin
+"#,
+            target_screen = target_screen
         );
         Self::run_plasma_script(&script)?;
         Ok(())

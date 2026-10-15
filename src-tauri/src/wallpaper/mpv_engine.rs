@@ -310,31 +310,13 @@ impl WallpaperBackend for MpvBackend {
         Ok(())
     }
 
-    fn stop(&self, _screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
+    fn stop(&self, _screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
         let mut proc_lock = self.process.lock().unwrap();
         if let Some(mut child) = proc_lock.take() {
             let _ = child.kill();
             let _ = child.wait();
         }
         let _ = std::fs::remove_file(MPV_SOCKET);
-        if settings.inactive_black_screen {
-            let script = r##"
-var allDesktops = desktops();
-for (var i = 0; i < allDesktops.length; i++) {
-    var d = allDesktops[i];
-    d.wallpaperPlugin = "org.kde.color";
-    d.currentConfigGroup = Array("Wallpaper", "org.kde.color", "General");
-    d.writeConfig("Color", "#000000");
-    d.reloadConfig();
-}
-"##;
-            let _ = Command::new("qdbus")
-                .arg("org.kde.plasmashell")
-                .arg("/PlasmaShell")
-                .arg("org.kde.PlasmaShell.evaluateScript")
-                .arg(script)
-                .output();
-        }
         Ok(())
     }
 }

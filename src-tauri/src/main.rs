@@ -1091,41 +1091,161 @@ fn resolve_app_executable_and_icon() -> (String, String) {
     let mut exe_str = String::new();
     let mut icon_str = String::new();
 
+    // 1. If currently executing from an AppImage, std::env::var("APPIMAGE") points directly to it
+    if let Ok(appimage_env) = std::env::var("APPIMAGE") {
+        let p = PathBuf::from(appimage_env.trim());
+        if p.is_file() {
+            exe_str = p.to_string_lossy().to_string();
+        }
+    }
+
+    // 2. Scan for candidate AppImages, prioritizing permanent ~/Applications directory
+    if exe_str.is_empty() {
+        if let Some(home) = dirs::home_dir() {
+            let app_dir = home.join("Applications");
+            if app_dir.is_dir() {
+                let mut app_candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&app_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+                            if name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether")) {
+                                if let Ok(meta) = path.metadata() {
+                                    let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                                    app_candidates.push((mtime, path));
+                                }
+                            }
+                        }
+                    }
+                }
+                app_candidates.sort_by(|a, b| b.0.cmp(&a.0));
+                if let Some((_, newest_app)) = app_candidates.into_iter().next() {
+                    exe_str = newest_app.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+
+    // 3. If not found in ~/Applications, scan workspace and user search directories
+    if exe_str.is_empty() {
+        let mut appimage_candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+        let mut check_dirs: Vec<PathBuf> = Vec::new();
+
+        if let Ok(cur) = std::env::current_exe() {
+            let mut p = cur.parent();
+            while let Some(dir) = p {
+                check_dirs.push(dir.to_path_buf());
+                check_dirs.push(dir.join("dist"));
+                check_dirs.push(dir.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
+                p = dir.parent();
+            }
+        }
+
+        if let Ok(cwd) = std::env::current_dir() {
+            check_dirs.push(cwd.clone());
+            check_dirs.push(cwd.join("dist"));
+            check_dirs.push(cwd.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
+        }
+
+        if let Some(home) = dirs::home_dir() {
+            check_dirs.push(home.join(".local").join("bin"));
+            check_dirs.push(home.join("bin"));
+            check_dirs.push(home.join("Desktop"));
+            check_dirs.push(home.join("Plocha"));
+            check_dirs.push(home.join("Downloads"));
+            check_dirs.push(home.join("Stažené"));
+        }
+
+        for dir in check_dirs {
+            if dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+                            if name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether")) {
+                                if let Ok(meta) = path.metadata() {
+                                    let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                                    appimage_candidates.push((mtime, path));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        appimage_candidates.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some((_, newest_appimage)) = appimage_candidates.into_iter().next() {
+            exe_str = newest_appimage.to_string_lossy().to_string();
+        }
+    }
+
+    // 3. Fallback to standalone binaries if no AppImage was found
+    if exe_str.is_empty() {
+        if let Ok(current_exe) = std::env::current_exe() {
+            let mut check_dir = current_exe.parent();
+            while let Some(dir) = check_dir {
+                let dist_bin = dir.join("dist").join("animated-linux-x86_64");
+                let rel_bin = dir.join("src-tauri").join("target").join("release").join("animated-linux");
+                let launch_sh = dir.join("setup").join("launch.sh");
+
+                if dist_bin.exists() {
+                    exe_str = dist_bin.to_string_lossy().to_string();
+                    break;
+                } else if rel_bin.exists() {
+                    exe_str = rel_bin.to_string_lossy().to_string();
+                    break;
+                } else if launch_sh.exists() {
+                    exe_str = launch_sh.to_string_lossy().to_string();
+                    break;
+                }
+                check_dir = dir.parent();
+            }
+        }
+    }
+
+    if exe_str.is_empty() {
+        if let Ok(cur) = std::env::current_exe() {
+            let cur_str = cur.to_string_lossy().to_string();
+            if !cur_str.contains("/.mount_") {
+                exe_str = cur_str;
+            } else {
+                exe_str = "animated-linux".to_string();
+            }
+        } else {
+            exe_str = "animated-linux".to_string();
+        }
+    }
+
+    // 4. Resolve icon
     if let Ok(current_exe) = std::env::current_exe() {
         let mut check_dir = current_exe.parent();
         while let Some(dir) = check_dir {
-            let dist_bin = dir.join("dist").join("animated-linux-x86_64");
-            let rel_bin = dir.join("src-tauri").join("target").join("release").join("animated-linux");
-            let launch_sh = dir.join("setup").join("launch.sh");
             let icon_file = dir.join("src-tauri").join("icons").join("128x128.png");
             let alt_icon = dir.join("src-tauri").join("icons").join("icon.png");
 
-            if dist_bin.exists() {
-                exe_str = dist_bin.to_string_lossy().to_string();
-            } else if rel_bin.exists() {
-                exe_str = rel_bin.to_string_lossy().to_string();
-            } else if launch_sh.exists() && exe_str.is_empty() {
-                exe_str = launch_sh.to_string_lossy().to_string();
-            }
-
             if icon_file.exists() {
                 icon_str = icon_file.to_string_lossy().to_string();
-            } else if alt_icon.exists() && icon_str.is_empty() {
+                break;
+            } else if alt_icon.exists() {
                 icon_str = alt_icon.to_string_lossy().to_string();
-            }
-
-            if !exe_str.is_empty() && !icon_str.is_empty() {
                 break;
             }
             check_dir = dir.parent();
         }
     }
 
-    if exe_str.is_empty() {
-        if let Ok(cur) = std::env::current_exe() {
-            exe_str = cur.to_string_lossy().to_string();
-        } else {
-            exe_str = "animated-linux".to_string();
+    if icon_str.is_empty() {
+        if let Ok(cwd) = std::env::current_dir() {
+            let icon_file = cwd.join("src-tauri").join("icons").join("128x128.png");
+            let alt_icon = cwd.join("src-tauri").join("icons").join("icon.png");
+            if icon_file.exists() {
+                icon_str = icon_file.to_string_lossy().to_string();
+            } else if alt_icon.exists() {
+                icon_str = alt_icon.to_string_lossy().to_string();
+            }
         }
     }
 
@@ -1140,9 +1260,13 @@ fn install_system_icon(source_icon: &str) {
     if let Some(data_dir) = dirs::data_local_dir() {
         let icon_dest_dir = data_dir.join("icons").join("hicolor").join("128x128").join("apps");
         let _ = std::fs::create_dir_all(&icon_dest_dir);
+        let dest_icon = icon_dest_dir.join("animated-linux.png");
         let src = Path::new(source_icon);
         if src.exists() {
-            let _ = std::fs::copy(src, icon_dest_dir.join("animated-linux.png"));
+            let _ = std::fs::copy(src, &dest_icon);
+        } else if !dest_icon.exists() {
+            let embedded_bytes = include_bytes!("../icons/128x128.png");
+            let _ = std::fs::write(&dest_icon, embedded_bytes);
         }
     }
 }
@@ -1355,4 +1479,31 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running AetherPaper tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_app_executable_and_icon() {
+        let (exe, icon) = resolve_app_executable_and_icon();
+        println!("Resolved exe: {}", exe);
+        println!("Resolved icon: {}", icon);
+        assert!(!exe.is_empty());
+        assert!(!icon.is_empty());
+    }
+
+    #[test]
+    fn test_app_menu_entry_generation() {
+        let res = set_app_menu_entry(true);
+        assert!(res.is_ok());
+        let apps_dir = dirs::data_local_dir().unwrap().join("applications");
+        let desktop_file = apps_dir.join("animated-linux.desktop");
+        assert!(desktop_file.exists());
+        let content = std::fs::read_to_string(&desktop_file).unwrap();
+        println!("Generated desktop entry:\n{}", content);
+        assert!(content.contains("Exec=\"/home/martin/Applications/Animated_Linux-x86_64.AppImage\""));
+        assert!(content.contains("Icon=animated-linux"));
+    }
 }

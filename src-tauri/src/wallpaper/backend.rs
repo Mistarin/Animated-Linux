@@ -98,3 +98,10 @@ pub trait WallpaperBackend: Send + Sync {
     }
     fn stop(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String>;
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopWallpaperBackup {
+    pub screen: i32,
+    pub plugin: String,
+    pub config: std::collections::HashMap<String, String>,
+}

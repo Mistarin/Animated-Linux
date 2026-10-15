@@ -9,6 +9,11 @@ cd "$DIR"
 echo "Building Frontend & Release Binary with Embedded Assets..."
 pnpm tauri build --no-bundle
 
+mkdir -p "$DIR/dist"
+if [ -f "$DIR/src-tauri/target/release/animated-linux" ]; then
+    cp -f "$DIR/src-tauri/target/release/animated-linux" "$DIR/dist/animated-linux-x86_64"
+fi
+
 # Ensure libsteam_api.so is located alongside binary
 STEAM_SO="$(find "$DIR/src-tauri/target" -name "libsteam_api.so" 2>/dev/null | head -n 1)"
 if [ -n "$STEAM_SO" ]; then
@@ -17,4 +22,4 @@ if [ -n "$STEAM_SO" ]; then
 fi
 
 echo "=== Build Complete! ==="
-echo "Release binary location: $DIR/src-tauri/target/release/aetherpaper"
+echo "Release binary location: $DIR/dist/animated-linux-x86_64"

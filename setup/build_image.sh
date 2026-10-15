@@ -30,7 +30,13 @@ build_native_binary() {
 }
 
 build_tauri_bundle() {
-    echo "[2/2] Packaging Standalone Desktop AppImage..."
+    echo "[2/2] Packaging Standalone Desktop AppImage & Packages..."
+    
+    # 1. Build Debian package via Tauri bundler
+    echo "Building Debian package bundle..."
+    pnpm tauri build --bundles deb || true
+
+    # 2. Package AppImage
     local appdir="$ROOT_DIR/src-tauri/target/release/bundle/appimage/Animated Linux.AppDir"
     local plugin_tool=""
 
@@ -38,24 +44,65 @@ build_tauri_bundle() {
         plugin_tool="$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage"
     elif command -v linuxdeploy-plugin-appimage >/dev/null 2>&1; then
         plugin_tool="$(command -v linuxdeploy-plugin-appimage)"
+    elif command -v appimagetool >/dev/null 2>&1; then
+        plugin_tool="$(command -v appimagetool)"
     fi
 
-    if [ -n "$plugin_tool" ] && [ -d "$appdir" ]; then
-        echo "Updating AppDir payload with latest release binary..."
-        mkdir -p "$appdir/usr/bin"
-        cp -f "$ROOT_DIR/dist/animated-linux-x86_64" "$appdir/usr/bin/animated-linux"
-        chmod +x "$appdir/usr/bin/animated-linux"
-
-        # Ensure icon and desktop assets are properly aligned
-        if [ -f "$ROOT_DIR/src-tauri/icons/128x128.png" ]; then
-            cp -f "$ROOT_DIR/src-tauri/icons/128x128.png" "$appdir/animated-linux.png"
-            cp -f "$ROOT_DIR/src-tauri/icons/128x128.png" "$appdir/Animated Linux.png"
+    if [ -z "$plugin_tool" ]; then
+        echo "Fetching linuxdeploy-plugin-appimage for AppImage packaging..."
+        mkdir -p "$HOME/.cache/tauri"
+        curl -fsSL -o "$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage" "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage" || true
+        if [ -f "$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage" ]; then
+            chmod +x "$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage"
+            plugin_tool="$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage"
         fi
+    fi
 
+    # Assemble AppDir payload
+    mkdir -p "$appdir/usr/bin"
+    mkdir -p "$appdir/usr/share/applications"
+    mkdir -p "$appdir/usr/share/icons/hicolor/128x128/apps"
+    cp -f "$ROOT_DIR/dist/animated-linux-x86_64" "$appdir/usr/bin/animated-linux"
+    chmod +x "$appdir/usr/bin/animated-linux"
+
+    cat << 'EOF' > "$appdir/usr/share/applications/Animated Linux.desktop"
+[Desktop Entry]
+Categories=Utility;Graphics;
+Comment=Animated wallpaper engine for Linux
+Exec=animated-linux
+StartupWMClass=animated-linux
+Icon=animated-linux
+Name=Animated Linux
+Terminal=false
+Type=Application
+EOF
+    ln -sf "usr/share/applications/Animated Linux.desktop" "$appdir/Animated Linux.desktop"
+    ln -sf "usr/share/applications/Animated Linux.desktop" "$appdir/animated-linux.desktop"
+
+    if [ -f "$ROOT_DIR/src-tauri/icons/128x128.png" ]; then
+        cp -f "$ROOT_DIR/src-tauri/icons/128x128.png" "$appdir/usr/share/icons/hicolor/128x128/apps/animated-linux.png"
+        cp -f "$ROOT_DIR/src-tauri/icons/128x128.png" "$appdir/animated-linux.png"
+        cp -f "$ROOT_DIR/src-tauri/icons/128x128.png" "$appdir/Animated Linux.png"
+        ln -sf "Animated Linux.png" "$appdir/.DirIcon"
+    fi
+
+    if [ ! -f "$appdir/AppRun" ]; then
+        if [ -f "$HOME/.cache/tauri/AppRun-x86_64" ]; then
+            cp -f "$HOME/.cache/tauri/AppRun-x86_64" "$appdir/AppRun"
+            chmod +x "$appdir/AppRun"
+        else
+            curl -fsSL -o "$appdir/AppRun" "https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64" || true
+            chmod +x "$appdir/AppRun" 2>/dev/null || true
+        fi
+    fi
+
+    if [ -n "$plugin_tool" ] && [ -x "$plugin_tool" ]; then
         echo "Generating SquashFS AppImage package..."
+        rm -f "$ROOT_DIR/Animated_Linux-x86_64.AppImage"
+        rm -f "$ROOT_DIR/dist/Animated_Linux-x86_64.AppImage"
         (
             cd "$ROOT_DIR"
-            APPIMAGE_EXTRACT_AND_RUN=1 "$plugin_tool" --appdir="$appdir"
+            APPIMAGE_EXTRACT_AND_RUN=1 "$plugin_tool" --appdir="$appdir" || true
         )
 
         local generated_appimage="$ROOT_DIR/Animated_Linux-x86_64.AppImage"
@@ -72,15 +119,16 @@ build_tauri_bundle() {
                 echo "[OK] Deployed to $user_app_dir/Animated_Linux-x86_64.AppImage"
             fi
         fi
-    else
-        echo "[Notice] Running tauri bundle..."
-        pnpm tauri build --no-bundle false || true
-        local bundle_dir="$ROOT_DIR/src-tauri/target/release/bundle"
-        if [ -d "$bundle_dir" ]; then
-            find "$bundle_dir" -type f \( -name "*.AppImage" -o -name "*.deb" \) -exec cp {} "$ROOT_DIR/dist/" \;
-            echo "[OK] Bundles copied to dist/"
-        fi
     fi
+
+    # 3. Copy deb bundle to dist/
+    local bundle_dir="$ROOT_DIR/src-tauri/target/release/bundle"
+    if [ -d "$bundle_dir" ]; then
+        find "$bundle_dir" -type f \( -name "*.AppImage" -o -name "*.deb" \) -exec cp -f {} "$ROOT_DIR/dist/" \; 2>/dev/null || true
+    fi
+
+    # Ensure native binary is present in dist/
+    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64"
 }
 
 build_container_image() {

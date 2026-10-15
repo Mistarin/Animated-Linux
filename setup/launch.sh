@@ -78,6 +78,10 @@ cleanup_port() {
 # 1. Default: Run directly from source code with Live HMR & incremental compile
 if [ "$USE_RELEASE" -eq 0 ]; then
     cleanup_port 1420
+    if [ ! -d "$ROOT_DIR/node_modules" ] || [ ! -f "$ROOT_DIR/node_modules/@tauri-apps/cli/package.json" ]; then
+        echo "[Launcher] Installing dependencies via pnpm..."
+        pnpm install
+    fi
     echo "[Launcher] Running directly from source code (Live HMR)..."
     exec pnpm tauri dev
 fi

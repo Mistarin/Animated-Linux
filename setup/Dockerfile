@@ -2,7 +2,7 @@
 FROM node:20-bookworm AS frontend-builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --frozen-lockfile || pnpm install
 COPY . .
 RUN pnpm build

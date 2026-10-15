@@ -97,7 +97,33 @@ impl WallpaperManager {
         let active_path = storage_dir.join("active.json");
         let restored_active: Option<WallpaperItem> = if active_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&active_path) {
-                serde_json::from_str::<WallpaperItem>(&content).ok()
+                if let Ok(mut wp) = serde_json::from_str::<WallpaperItem>(&content) {
+                    if wp.thumbnail_data.is_none() {
+                        wp.thumbnail_data = backend::encode_thumbnail_base64(Path::new(&wp.thumbnail_path));
+                    }
+                    if Path::new(&wp.file_path).exists() {
+                        println!("[AnimatedLinux] Restored active wallpaper state from previous session: {}", wp.title);
+                        Some(wp)
+                    } else {
+                        let original_path = storage_dir.join(format!("{}.{}", wp.id, wp.format));
+                        let nested_path = storage_dir.join("wallpapers").join(format!("{}.{}", wp.id, wp.format));
+                        if original_path.exists() {
+                            wp.file_path = original_path.to_string_lossy().to_string();
+                            println!("[AnimatedLinux] Restored active wallpaper using fallback path: {}", wp.file_path);
+                            Some(wp)
+                        } else if nested_path.exists() {
+                            wp.file_path = nested_path.to_string_lossy().to_string();
+                            println!("[AnimatedLinux] Restored active wallpaper using nested path: {}", wp.file_path);
+                            Some(wp)
+                        } else {
+                            eprintln!("[AnimatedLinux] Active wallpaper file missing on disk, clearing active.json");
+                            let _ = std::fs::remove_file(&active_path);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -327,6 +353,9 @@ print(JSON.stringify(results));
         }
 
         backend.apply(&effective_wp, screen, &settings)?;
+        if settings.is_paused {
+            let _ = backend.pause(screen, &settings);
+        }
         let mut save_item = effective_wp.clone();
         save_item.thumbnail_data = None;
         let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&save_item).unwrap_or_default());
@@ -499,6 +528,25 @@ for (var i = 0; i < allDesktops.length; i++) {{
         Ok(())
     }
 
+    pub fn cleanup_on_quit(&self) -> Result<(), String> {
+        let settings = self.current_settings.lock().unwrap().clone();
+        let _ = self.mpv_backend.stop(None, &settings);
+        let _ = self.plasma_mpv_backend.stop(None, &settings);
+        let _ = self.plasma_backend.stop(None, &settings);
+        let _ = self.restore_previous_wallpaper();
+
+        // Preserve active wallpaper state in active.json so that upon next app launch
+        // the active wallpaper and its state can be loaded automatically.
+        let active = self.active_wallpaper.lock().unwrap().clone();
+        if let Some(wp) = active {
+            let mut save_item = wp;
+            save_item.thumbnail_data = None;
+            let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&save_item).unwrap_or_default());
+            println!("[AnimatedLinux] Active wallpaper '{}' state preserved for next session launch", save_item.title);
+        }
+        Ok(())
+    }
+
     pub fn stop(&self) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let _ = self.mpv_backend.stop(None, &settings);
@@ -570,5 +618,49 @@ mod tests {
         assert_eq!(deserialized[0].screen, 0);
         assert_eq!(deserialized[0].plugin, "org.kde.image");
         assert_eq!(deserialized[0].config.get("Image").unwrap(), "file:///tmp/test.jpg");
+    }
+
+    #[test]
+    fn test_active_wallpaper_persistence_across_quit() {
+        let temp_dir = std::env::temp_dir().join(format!("animated_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let dummy_video = temp_dir.join("test_video.mp4");
+        let _ = std::fs::write(&dummy_video, b"dummy video content");
+
+        let dummy_thumb = temp_dir.join("test_thumb.jpg");
+        let _ = std::fs::write(&dummy_thumb, b"dummy thumb");
+
+        let wp = WallpaperItem {
+            id: "test-id-1".to_string(),
+            title: "Test Wallpaper".to_string(),
+            file_path: dummy_video.to_string_lossy().to_string(),
+            thumbnail_path: dummy_thumb.to_string_lossy().to_string(),
+            thumbnail_data: None,
+            cached_qualities: vec![5],
+            duration_secs: 10.0,
+            resolution: "1920x1080".to_string(),
+            format: "mp4".to_string(),
+            is_workshop: false,
+            workshop_id: None,
+        };
+
+        let active_file = temp_dir.join("active.json");
+        let wp_json = serde_json::to_string(&wp).unwrap();
+        let _ = std::fs::write(&active_file, &wp_json);
+        assert!(active_file.exists());
+
+        // Read active.json simulating launch
+        let content = std::fs::read_to_string(&active_file).unwrap();
+        let loaded: WallpaperItem = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, "test-id-1");
+        assert_eq!(loaded.title, "Test Wallpaper");
+        assert!(Path::new(&loaded.file_path).exists());
+
+        // Verify stop removes active.json
+        let _ = std::fs::remove_file(&active_file);
+        assert!(!active_file.exists());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -95,7 +95,7 @@ impl RequestManager {
                     }
                     ActionRequest::SafeQuit { app_handle, responder } => {
                         println!("[AnimatedLinux] Executing safe quit sequence: stopping wallpaper backend and restoring static desktop...");
-                        let stop_res = wallpaper_mgr.stop();
+                        let stop_res = wallpaper_mgr.cleanup_on_quit();
                         if let Err(ref e) = stop_res {
                             eprintln!("[AnimatedLinux] Warning during stop on quit: {}", e);
                         }

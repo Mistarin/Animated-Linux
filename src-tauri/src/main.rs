@@ -1424,13 +1424,23 @@ fn main() {
                 eprintln!("[Tray] Warning: could not initialize system tray: {}", e);
             }
 
-            // Restore active wallpaper playback if present via RequestManager
+            // Automatically restore active wallpaper and state on app launch if present upon exiting the app
             let req_mgr_init = request_manager.clone();
             let wp_mgr_init = wallpaper_mgr.clone();
             tauri::async_runtime::spawn(async move {
+                // Short grace interval allowing window/display/desktop session to stabilize
+                tokio::time::sleep(std::time::Duration::from_millis(350)).await;
                 let maybe_active = wp_mgr_init.active_wallpaper.lock().unwrap().clone();
                 if let Some(active) = maybe_active {
-                    let _ = req_mgr_init.apply_wallpaper(active, None).await;
+                    println!("[AnimatedLinux] Automatically loading last active wallpaper state on app launch: {}", active.title);
+                    if let Err(e) = req_mgr_init.apply_wallpaper(active.clone(), None).await {
+                        eprintln!("[AnimatedLinux] Warning on initial wallpaper apply: {}, retrying once...", e);
+                        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                        let retry_active = wp_mgr_init.active_wallpaper.lock().unwrap().clone();
+                        if let Some(act) = retry_active {
+                            let _ = req_mgr_init.apply_wallpaper(act, None).await;
+                        }
+                    }
                 }
             });
 

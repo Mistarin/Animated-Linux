@@ -357,9 +357,13 @@ async function loadLibrary() {
         activeWallpaper = active;
         nowPlayingThumb.src = getThumbnail(active);
         nowPlayingTitle.textContent = active.title;
-        nowPlayingSub.textContent = `Playing on Desktop (${active.format.toUpperCase()} • ${active.resolution || 'HD'})`;
-        btnTogglePlay.innerHTML = Icons.pause;
-        isPlaying = true;
+        const s = await invoke('get_performance_settings');
+        const isPaused = s ? s.is_paused : false;
+        isPlaying = !isPaused;
+        nowPlayingSub.textContent = isPlaying
+          ? `Playing on Desktop (${active.format.toUpperCase()} • ${active.resolution || 'HD'})`
+          : `Paused (${active.format.toUpperCase()} • ${active.resolution || 'HD'})`;
+        btnTogglePlay.innerHTML = isPlaying ? Icons.pause : Icons.play;
         updateActivePlayerBadge(active);
       } else {
         updateActivePlayerBadge(null);
@@ -458,7 +462,7 @@ function renderLibrary() {
            title="Double-click to apply wallpaper">
         <div class="card-thumbnail-wrapper" id="thumb-wrapper-${wp.id}">
           <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" />
-          ${isActive ? '<span class="badge-active">Playing</span>' : ''}
+          ${isActive ? `<span class="badge-active">${isPlaying ? 'Playing' : 'Paused'}</span>` : ''}
           <span class="badge-res">${wp.resolution || 'HD'}</span>
         </div>
         <div class="card-body">
@@ -1566,6 +1570,13 @@ function setupKeyboardShortcuts() {
       if (activeWallpaper && btnTogglePlay) {
         btnTogglePlay.click();
       }
+      return;
+    }
+
+    // Ctrl+Q: Trigger safe close / quit flow
+    if (e.ctrlKey && e.key.toLowerCase() === 'q') {
+      e.preventDefault();
+      triggerCloseFlow();
       return;
     }
 

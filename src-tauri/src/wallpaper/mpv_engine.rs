@@ -119,6 +119,9 @@ impl WallpaperBackend for MpvBackend {
             mpv_opts.push(format!("mute={}", if settings.is_muted { "yes" } else { "no" }));
             mpv_opts.push(format!("volume={}", settings.volume));
             mpv_opts.push(format!("speed={}", settings.speed));
+            if settings.is_paused {
+                mpv_opts.push("pause=yes".to_string());
+            }
 
             if settings.target_fps > 0 {
                 mpv_opts.push(format!("vf=fps={}", settings.target_fps));

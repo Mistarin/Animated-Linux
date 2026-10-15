@@ -1367,6 +1367,16 @@ fn set_autostart(enable: bool) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn get_start_minimized(state: State<'_, AppState>) -> bool {
+    state.wallpaper_mgr.get_start_minimized()
+}
+
+#[tauri::command]
+fn set_start_minimized(state: State<'_, AppState>, enable: bool) -> Result<bool, String> {
+    state.wallpaper_mgr.set_start_minimized(enable)
+}
+
+#[tauri::command]
 async fn safe_exit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     SHOULD_EXIT.store(true, std::sync::atomic::Ordering::SeqCst);
     state.request_manager.safe_quit(app).await
@@ -1412,8 +1422,13 @@ fn main() {
         })
         .setup(move |app| {
             let args: Vec<String> = std::env::args().collect();
-            let is_autostart = args.iter().any(|a| a == "--autostart" || a == "--minimized" || a == "--hidden");
-            if is_autostart {
+            let is_explicit_minimized = args.iter().any(|a| a == "--minimized" || a == "--hidden");
+            let is_explicit_show = args.iter().any(|a| a == "--open" || a == "--show");
+            let is_autostart = args.iter().any(|a| a == "--autostart");
+            let start_minimized = wallpaper_mgr.get_start_minimized();
+
+            let should_hide = !is_explicit_show && (is_explicit_minimized || start_minimized || (is_autostart && start_minimized));
+            if should_hide {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
@@ -1482,6 +1497,8 @@ fn main() {
             clear_variant_cache,
             get_autostart_status,
             set_autostart,
+            get_start_minimized,
+            set_start_minimized,
             get_app_menu_status,
             set_app_menu_entry,
             get_wallpaper_backend,

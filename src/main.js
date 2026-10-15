@@ -115,6 +115,7 @@ const chkRestartOnResume = document.getElementById('chk-restart-on-resume');
 const settingBackend = document.getElementById('setting-backend');
 const chkAutostart = document.getElementById('chk-autostart');
 const labelAutostartStatus = document.getElementById('label-autostart-status');
+const chkStartMinimized = document.getElementById('chk-start-minimized');
 
 const btnImport = document.getElementById('btn-import');
 const dropzone = document.getElementById('dropzone');
@@ -1188,6 +1189,9 @@ async function loadPerformanceSettings() {
     if (chkRestartOnResume) {
       chkRestartOnResume.checked = s.restart_on_resume || false;
     }
+    if (chkStartMinimized && s.start_minimized !== undefined) {
+      chkStartMinimized.checked = s.start_minimized;
+    }
 
     // Restore saved library sort preference
     const savedSort = localStorage.getItem('library_sort') || 'recent';
@@ -1723,7 +1727,7 @@ async function setupAutostartControls() {
     console.error('Failed to query autostart status:', err);
   }
 
-  chkAutostart.addEventListener('change', async (e) => {
+    chkAutostart.addEventListener('change', async (e) => {
     const targetState = e.target.checked;
     try {
       const result = await invoke('set_autostart', { enable: targetState });
@@ -1741,6 +1745,31 @@ async function setupAutostartControls() {
       } catch (_) {}
     }
   });
+
+  // Start Minimized Control
+  if (chkStartMinimized) {
+    try {
+      const isMinimized = await invoke('get_start_minimized');
+      chkStartMinimized.checked = !!isMinimized;
+    } catch (err) {
+      console.error('Failed to query start minimized status:', err);
+    }
+
+    chkStartMinimized.addEventListener('change', async (e) => {
+      const targetState = e.target.checked;
+      try {
+        const result = await invoke('set_start_minimized', { enable: targetState });
+        chkStartMinimized.checked = result;
+        showToast(result ? 'Start minimized enabled' : 'Start minimized disabled', 'info');
+      } catch (err) {
+        showToast(`Failed to update start minimized setting: ${err}`, 'error');
+        try {
+          const isMinimized = await invoke('get_start_minimized');
+          chkStartMinimized.checked = !!isMinimized;
+        } catch (_) {}
+      }
+    });
+  }
 }
 
 // Application Menu Integration Controls

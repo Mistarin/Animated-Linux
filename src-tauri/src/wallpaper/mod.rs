@@ -150,8 +150,8 @@ impl WallpaperManager {
                 match serde_json::from_str::<PlaybackSettings>(&content) {
                     Ok(s) => {
                         println!(
-                            "[AnimatedLinux] Restored persistent playback settings: Quality Q{}, {} FPS, {}x speed, FillMode {}, Pan ({}, {}), PausePolicy {}",
-                            s.quality_level, s.target_fps, s.speed, s.fill_mode, s.pan_x, s.pan_y, s.pause_policy
+                            "[AnimatedLinux] Restored persistent playback settings: Quality Q{}, {} FPS, {}x speed, FillMode {}, Pan ({}, {}), PausePolicy {}, StartMinimized: {}",
+                            s.quality_level, s.target_fps, s.speed, s.fill_mode, s.pan_x, s.pan_y, s.pause_policy, s.start_minimized
                         );
                         s
                     }
@@ -408,6 +408,19 @@ print(JSON.stringify(results));
         self.current_settings.lock().unwrap().clone()
     }
 
+    pub fn get_start_minimized(&self) -> bool {
+        self.current_settings.lock().unwrap().start_minimized
+    }
+
+    pub fn set_start_minimized(&self, enable: bool) -> Result<bool, String> {
+        let mut settings = self.current_settings.lock().unwrap();
+        settings.start_minimized = enable;
+        let updated = settings.clone();
+        drop(settings);
+        self.save_settings(&updated);
+        Ok(enable)
+    }
+
     pub fn update_performance_settings(
         &self,
         quality_level: u32,
@@ -662,5 +675,23 @@ mod tests {
         assert!(!active_file.exists());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_start_minimized_settings_persistence() {
+        let mut settings = PlaybackSettings::default();
+        assert!(!settings.start_minimized);
+
+        settings.start_minimized = true;
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains("\"start_minimized\":true"));
+
+        let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
+        assert!(deserialized.start_minimized);
+
+        // Deserializing older json without start_minimized key should default to false
+        let legacy_json = "{\"volume\":50,\"speed\":1.0}";
+        let legacy_settings: PlaybackSettings = serde_json::from_str(legacy_json).unwrap();
+        assert!(!legacy_settings.start_minimized);
     }
 }

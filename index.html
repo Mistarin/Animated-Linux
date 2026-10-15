@@ -337,15 +337,28 @@
                 </p>
               </div>
 
-              <div class="setting-row">
-                <div class="setting-row-text">
-                  <div class="setting-label">Launch on System Startup</div>
-                  <div class="setting-subtext">Start minimized in system tray</div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div class="setting-row">
+                  <div class="setting-row-text">
+                    <div class="setting-label">Launch on System Startup</div>
+                    <div class="setting-subtext">Start Animated Linux automatically on login</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-autostart" />
+                    <span class="switch-slider"></span>
+                  </label>
                 </div>
-                <label class="switch">
-                  <input type="checkbox" id="chk-autostart" />
-                  <span class="switch-slider"></span>
-                </label>
+
+                <div class="setting-row" style="padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+                  <div class="setting-row-text">
+                    <div class="setting-label">Start Minimized</div>
+                    <div class="setting-subtext">Launch silently in system tray without opening window</div>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" id="chk-start-minimized" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
 

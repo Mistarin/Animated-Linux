@@ -132,6 +132,19 @@ const chkRememberCloseAction = document.getElementById('chk-remember-close-actio
 const settingCloseBehavior = document.getElementById('setting-close-behavior');
 const btnResetClosePref = document.getElementById('btn-reset-close-pref');
 
+// Batch Import Modal & Button Elements
+const modalBatchImport = document.getElementById('modal-batch-import');
+const modalBatchTitle = document.getElementById('modal-batch-title');
+const modalBatchStatus = document.getElementById('modal-batch-status');
+const batchProgressLabel = document.getElementById('batch-progress-label');
+const batchProgressPct = document.getElementById('batch-progress-pct');
+const batchProgressFill = document.getElementById('batch-progress-fill');
+const batchProgressCounts = document.getElementById('batch-progress-counts');
+const batchSpinner = document.getElementById('batch-spinner');
+const batchStatusText = document.getElementById('batch-status-text');
+const btnBatchClose = document.getElementById('btn-batch-close');
+const btnImportFolder = document.getElementById('btn-import-folder');
+
 // Toast Notification Function
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -184,6 +197,8 @@ function renderStaticIcons() {
   };
 
   setIcon('icon-import-slot', Icons.plus);
+  setIcon('icon-import-folder-slot', Icons.folderPlus);
+  setIcon('modal-batch-icon', Icons.folderPlus);
   setIcon('icon-folder-slot', Icons.folder);
   setIcon('icon-folder-settings-slot', Icons.folder);
   setIcon('icon-clear-search-slot', Icons.x);
@@ -1220,70 +1235,141 @@ async function syncPerformanceSettings() {
   }
 }
 
-// Import & Drag Drop with QOL Blurred Preview + Slick White Loading Line
+// Import & Drag Drop with Batch Processing, Recursive Folder Scan, and Slick Modal/Inline Progress
 function setupImportAndDrop() {
-  async function handleImportFilePaths(paths) {
-    if (!paths || paths.length === 0) return;
-    const addedTemp = [];
-    for (const p of paths) {
-      const filename = p.split('/').pop().replace(/\.[^/.]+$/, '');
-      const tempItem = {
-        id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-        title: filename,
-        thumbnail_data: '/src-tauri/icons/icon.png',
-        format: p.split('.').pop() || 'mp4',
-        duration_secs: 0,
-        resolution: 'Importing...',
-        isInstalling: true,
-        cached_qualities: [5],
-      };
-      installingItems.unshift(tempItem);
-      addedTemp.push({ path: p, tempId: tempItem.id, tempItem });
-    }
+  // Listen for background batch import progress events
+  listen('batch-import-progress', (event) => {
+    const payload = event.payload;
+    if (!payload) return;
+    if (batchProgressFill) batchProgressFill.style.width = `${payload.percent}%`;
+    if (batchProgressPct) batchProgressPct.textContent = `${payload.percent}%`;
+    if (batchProgressLabel) batchProgressLabel.textContent = payload.filename || 'Processing...';
+    if (batchProgressCounts) batchProgressCounts.textContent = `${payload.current} / ${payload.total}`;
+    if (batchStatusText) batchStatusText.textContent = payload.status || 'Importing';
+  });
+
+  // Handle single video import with sleek blurred preview card
+  async function handleImportSingleFilePath(p) {
+    const filename = p.split('/').pop().replace(/\.[^/.]+$/, '');
+    const tempItem = {
+      id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      title: filename,
+      thumbnail_data: '/src-tauri/icons/icon.png',
+      format: p.split('.').pop() || 'mp4',
+      duration_secs: 0,
+      resolution: 'Importing...',
+      isInstalling: true,
+      cached_qualities: [5],
+    };
+    installingItems.unshift(tempItem);
     renderLibrary();
 
-    for (const item of addedTemp) {
-      // Extract blurred preview frame dynamically from the video
-      invoke('get_quick_preview', { sourcePath: item.path })
-        .then((previewData) => {
-          if (previewData) {
-            item.tempItem.thumbnail_data = previewData;
-            const thumbEl = document.getElementById(`thumb-img-${item.tempId}`);
-            if (thumbEl) {
-              thumbEl.src = previewData;
-            }
-          }
-        })
-        .catch(() => {});
-
-      try {
-        const imported = await invoke('import_wallpaper', { sourcePath: item.path });
-        installingItems = installingItems.filter((i) => i.id !== item.tempId);
-        wallpapers.unshift(imported);
-
-        const cardEl = document.getElementById(`wp-card-${item.tempId}`);
-        if (cardEl) {
-          const thumb = cardEl.querySelector('.card-thumb');
-          const wrapper = cardEl.querySelector('.card-thumbnail-wrapper');
-          const bar = cardEl.querySelector('.loading-bar-wrapper');
-          const badge = cardEl.querySelector('.badge-installing');
-          if (thumb) thumb.src = getThumbnail(imported);
-          if (wrapper) wrapper.classList.remove('is-installing');
-          if (bar) bar.remove();
-          if (badge) badge.remove();
+    // Fast blurred preview frame extraction
+    invoke('get_quick_preview', { sourcePath: p })
+      .then((previewData) => {
+        if (previewData) {
+          tempItem.thumbnail_data = previewData;
+          const thumbEl = document.getElementById(`thumb-img-${tempItem.id}`);
+          if (thumbEl) thumbEl.src = previewData;
         }
-      } catch (err) {
-        console.error('Failed to import ' + item.path, err);
-        showToast('Failed to import: ' + err, 'error');
-        installingItems = installingItems.filter((i) => i.id !== item.tempId);
+      })
+      .catch(() => {});
+
+    try {
+      const imported = await invoke('import_wallpaper', { sourcePath: p });
+      installingItems = installingItems.filter((i) => i.id !== tempItem.id);
+      wallpapers.unshift(imported);
+
+      const cardEl = document.getElementById(`wp-card-${tempItem.id}`);
+      if (cardEl) {
+        const thumb = cardEl.querySelector('.card-thumb');
+        const wrapper = cardEl.querySelector('.card-thumbnail-wrapper');
+        const bar = cardEl.querySelector('.loading-bar-wrapper');
+        const badge = cardEl.querySelector('.badge-installing');
+        if (thumb) thumb.src = getThumbnail(imported);
+        if (wrapper) wrapper.classList.remove('is-installing');
+        if (bar) bar.remove();
+        if (badge) badge.remove();
       }
+
+      setTimeout(async () => {
+        renderLibrary();
+        showToast('Wallpaper imported successfully', 'success');
+        await refreshCacheStats();
+      }, 300);
+    } catch (err) {
+      console.error('Failed to import ' + p, err);
+      showToast('Failed to import: ' + err, 'error');
+      installingItems = installingItems.filter((i) => i.id !== tempItem.id);
+      renderLibrary();
+    }
+  }
+
+  // Unified batch importer supporting multiple files, folders, and recursive directory scans
+  async function runBatchImport(sources) {
+    if (!sources || sources.length === 0) return;
+
+    // Scan sources to resolve all video files (including subdirectories)
+    let resolvedFiles = [];
+    try {
+      resolvedFiles = await invoke('scan_video_sources', { sources });
+    } catch (e) {
+      console.error('Scan error:', e);
+      resolvedFiles = sources;
     }
 
-    setTimeout(async () => {
-      renderLibrary();
-      showToast(`Imported ${addedTemp.length} wallpaper(s)`, 'success');
-      await refreshCacheStats();
-    }, 400);
+    if (!resolvedFiles || resolvedFiles.length === 0) {
+      showToast('No supported video files found in selection', 'info');
+      return;
+    }
+
+    // Single video file -> use fast inline loading card
+    if (resolvedFiles.length === 1) {
+      await handleImportSingleFilePath(resolvedFiles[0]);
+      return;
+    }
+
+    // Multiple files -> open batch import progress modal
+    if (modalBatchImport) modalBatchImport.classList.remove('hidden');
+    if (btnBatchClose) btnBatchClose.classList.add('hidden');
+    if (batchSpinner) batchSpinner.classList.remove('hidden');
+    if (batchProgressFill) batchProgressFill.style.width = '0%';
+    if (batchProgressPct) batchProgressPct.textContent = '0%';
+    if (batchProgressLabel) batchProgressLabel.textContent = `Found ${resolvedFiles.length} videos. Initializing...`;
+    if (batchProgressCounts) batchProgressCounts.textContent = `0 / ${resolvedFiles.length}`;
+    if (modalBatchStatus) modalBatchStatus.textContent = `Importing ${resolvedFiles.length} videos...`;
+    if (batchStatusText) batchStatusText.textContent = 'Starting';
+
+    try {
+      const result = await invoke('batch_import_wallpapers', { sourcePaths: resolvedFiles });
+      if (result && result.imported && result.imported.length > 0) {
+        wallpapers = [...result.imported, ...wallpapers];
+        renderLibrary();
+        showToast(`Successfully imported ${result.imported.length} wallpaper(s)`, 'success');
+        await refreshCacheStats();
+      }
+
+      if (batchProgressFill) batchProgressFill.style.width = '100%';
+      if (batchProgressPct) batchProgressPct.textContent = '100%';
+      if (batchSpinner) batchSpinner.classList.add('hidden');
+      if (modalBatchStatus) modalBatchStatus.textContent = 'Import complete';
+      if (batchStatusText) batchStatusText.textContent = 'Finished';
+      if (batchProgressLabel) {
+        batchProgressLabel.textContent = result.failed?.length > 0
+          ? `Imported ${result.imported.length} videos (${result.failed.length} failed)`
+          : `Imported all ${result.imported.length} videos successfully`;
+      }
+
+      setTimeout(() => {
+        if (modalBatchImport) modalBatchImport.classList.add('hidden');
+      }, 1000);
+    } catch (err) {
+      console.error('Batch import failed:', err);
+      showToast('Batch import failed: ' + err, 'error');
+      if (batchStatusText) batchStatusText.textContent = 'Failed';
+      if (batchSpinner) batchSpinner.classList.add('hidden');
+      if (btnBatchClose) btnBatchClose.classList.remove('hidden');
+    }
   }
 
   async function triggerNativeFilePicker() {
@@ -1292,7 +1378,7 @@ function setupImportAndDrop() {
       btnImport.innerHTML = `${Icons.spinner} <span>Selecting...</span>`;
       const paths = await invoke('select_video_files');
       if (paths && paths.length > 0) {
-        await handleImportFilePaths(paths);
+        await runBatchImport(paths);
       }
     } catch (e) {
       showToast('Error importing video: ' + e, 'error');
@@ -1302,8 +1388,60 @@ function setupImportAndDrop() {
     }
   }
 
+  async function triggerNativeFolderPicker() {
+    try {
+      if (btnImportFolder) {
+        btnImportFolder.disabled = true;
+        btnImportFolder.innerHTML = `${Icons.spinner} <span>Selecting...</span>`;
+      }
+      const folderPath = await invoke('select_video_folder');
+      if (folderPath) {
+        await runBatchImport([folderPath]);
+      }
+    } catch (e) {
+      showToast('Error selecting folder: ' + e, 'error');
+    } finally {
+      if (btnImportFolder) {
+        btnImportFolder.disabled = false;
+        btnImportFolder.innerHTML = `<span id="icon-import-folder-slot">${Icons.folderPlus}</span> <span>Import Folder</span>`;
+      }
+    }
+  }
+
   btnImport.addEventListener('click', triggerNativeFilePicker);
-  dropzone.addEventListener('click', triggerNativeFilePicker);
+
+  if (btnImportFolder) {
+    btnImportFolder.addEventListener('click', triggerNativeFolderPicker);
+  }
+
+  dropzone.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-browse-files') || e.target.closest('#btn-browse-folder')) {
+      return;
+    }
+    triggerNativeFilePicker();
+  });
+
+  const btnBrowseFiles = document.getElementById('btn-browse-files');
+  if (btnBrowseFiles) {
+    btnBrowseFiles.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerNativeFilePicker();
+    });
+  }
+
+  const btnBrowseFolder = document.getElementById('btn-browse-folder');
+  if (btnBrowseFolder) {
+    btnBrowseFolder.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerNativeFolderPicker();
+    });
+  }
+
+  if (btnBatchClose) {
+    btnBatchClose.addEventListener('click', () => {
+      if (modalBatchImport) modalBatchImport.classList.add('hidden');
+    });
+  }
 
   listen(TauriEvent.DRAG_ENTER, () => {
     dropzone.classList.add('dragover');
@@ -1317,7 +1455,7 @@ function setupImportAndDrop() {
     dropzone.classList.remove('dragover');
     const paths = event.payload?.paths;
     if (paths && paths.length > 0) {
-      await handleImportFilePaths(paths);
+      await runBatchImport(paths);
     }
   });
 

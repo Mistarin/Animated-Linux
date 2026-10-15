@@ -74,6 +74,10 @@
                 <span id="icon-clear-search-slot"></span>
               </button>
             </div>
+            <button class="btn btn-secondary" id="btn-import-folder" title="Import Entire Folder of Videos Recursively">
+              <span id="icon-import-folder-slot"></span>
+              <span>Import Folder</span>
+            </button>
             <button class="btn btn-secondary btn-header-folder" id="btn-open-folder" title="Open Wallpapers Storage Folder in File Manager">
               <span id="icon-folder-slot"></span>
               <span>Folder</span>
@@ -88,8 +92,12 @@
         <div style="margin-top: 24px;">
           <div class="dropzone" id="dropzone">
             <div class="dropzone-icon" id="icon-dropzone-slot"></div>
-            <div class="dropzone-text">Drop video files here or click to browse</div>
-            <div class="dropzone-sub">Supports MP4, WebM, MKV, GIF, MOV</div>
+            <div class="dropzone-text">Drop video files or folders here or click to browse</div>
+            <div class="dropzone-sub">Supports MP4, WebM, MKV, GIF, MOV, AVI, FLV, M4V, WMV, TS & Subdirectories</div>
+            <div class="dropzone-actions">
+              <button class="btn btn-secondary btn-sm" id="btn-browse-files" type="button">Select Files</button>
+              <button class="btn btn-secondary btn-sm" id="btn-browse-folder" type="button">Select Folder</button>
+            </div>
           </div>
         </div>
       </section>
@@ -670,6 +678,44 @@
           <button class="btn btn-danger-action" id="btn-confirm-delete" style="background: #991b1b !important; background-color: #991b1b !important; border: 1px solid #dc2626 !important; color: #ffffff !important; font-weight: 500;">
             Delete Wallpaper
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch Import Progress Modal -->
+    <div class="modal-overlay hidden" id="modal-batch-import">
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-batch-title" style="max-width: 480px;">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-header-icon" id="modal-batch-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;"></div>
+            <div>
+              <h3 class="modal-title" id="modal-batch-title">Importing Wallpapers</h3>
+              <p class="modal-subtitle" id="modal-batch-status">Scanning media files...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="batch-import-body" style="padding: 16px 20px 4px 20px;">
+          <div class="batch-progress-info" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.82rem;">
+            <span id="batch-progress-label" style="color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">Preparing files...</span>
+            <span id="batch-progress-pct" style="font-weight: 600; color: var(--text-main);">0%</span>
+          </div>
+
+          <div class="batch-progress-track">
+            <div class="batch-progress-fill" id="batch-progress-fill" style="width: 0%;"></div>
+          </div>
+
+          <div class="batch-details" style="margin-top: 12px; display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted);">
+            <span id="batch-progress-counts">0 / 0</span>
+            <span id="batch-processing-status" style="display: flex; align-items: center; gap: 6px;">
+              <span class="batch-import-spinner spin" id="batch-spinner"></span>
+              <span id="batch-status-text">Processing</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="justify-content: flex-end; gap: 8px;">
+          <button class="btn btn-secondary hidden" id="btn-batch-close">Close</button>
         </div>
       </div>
     </div>

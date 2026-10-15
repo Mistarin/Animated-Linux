@@ -33,7 +33,7 @@ fn get_wallpapers(state: State<'_, AppState>) -> Vec<WallpaperItem> {
     state.wallpaper_mgr.load_library()
 }
 
-fn import_wallpaper_internal(wp_mgr: &WallpaperManager, source_path: &str) -> Result<WallpaperItem, String> {
+fn import_single_file_to_storage(wp_mgr: &WallpaperManager, source_path: &str) -> Result<WallpaperItem, String> {
     let src = Path::new(source_path);
     if !src.exists() {
         return Err(format!("Source file does not exist: {}", source_path));
@@ -69,7 +69,7 @@ fn import_wallpaper_internal(wp_mgr: &WallpaperManager, source_path: &str) -> Re
     let duration = get_video_duration(&dest_video).unwrap_or(15.0);
     let thumbnail_data = encode_thumbnail_base64(&dest_thumb);
 
-    let item = WallpaperItem {
+    Ok(WallpaperItem {
         id,
         title: file_stem,
         file_path: dest_video.to_string_lossy().to_string(),
@@ -81,12 +81,14 @@ fn import_wallpaper_internal(wp_mgr: &WallpaperManager, source_path: &str) -> Re
         format: ext,
         is_workshop: false,
         workshop_id: None,
-    };
+    })
+}
 
+fn import_wallpaper_internal(wp_mgr: &WallpaperManager, source_path: &str) -> Result<WallpaperItem, String> {
+    let item = import_single_file_to_storage(wp_mgr, source_path)?;
     let mut library = wp_mgr.load_library();
     library.push(item.clone());
     wp_mgr.save_library(&library)?;
-
     Ok(item)
 }
 
@@ -200,9 +202,223 @@ fn pick_video_paths_internal() -> Vec<String> {
     paths_to_import
 }
 
+fn pick_video_folder_internal() -> Option<String> {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+
+    // 1. Try kdialog (native KDE file dialog)
+    if let Ok(out) = Command::new("kdialog")
+        .arg("--getexistingdirectory")
+        .arg(&home)
+        .arg("--title")
+        .arg("Select Video Folder to Import")
+        .output()
+    {
+        if out.status.success() {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let trimmed = stdout.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    // 2. Try zenity fallback
+    if let Ok(out) = Command::new("zenity")
+        .arg("--file-selection")
+        .arg("--directory")
+        .arg("--title=Select Video Folder to Import")
+        .output()
+    {
+        if out.status.success() {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let trimmed = stdout.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 #[tauri::command]
 fn select_video_files() -> Result<Vec<String>, String> {
     Ok(pick_video_paths_internal())
+}
+
+#[tauri::command]
+fn select_video_folder() -> Result<Option<String>, String> {
+    Ok(pick_video_folder_internal())
+}
+
+const SUPPORTED_VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4", "webm", "mkv", "mov", "gif", "avi", "flv", "m4v", "wmv", "ts"
+];
+
+fn is_supported_video_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        SUPPORTED_VIDEO_EXTENSIONS.iter().any(|&e| e == ext_lower)
+    } else {
+        false
+    }
+}
+
+fn scan_sources_internal(sources: &[String]) -> Vec<String> {
+    let mut resolved: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+
+    for src_str in sources {
+        let path = Path::new(src_str);
+        if !path.exists() {
+            continue;
+        }
+
+        if path.is_file() {
+            if is_supported_video_file(path) {
+                if let Ok(canonical) = path.canonicalize() {
+                    if seen.insert(canonical) {
+                        resolved.push(path.to_string_lossy().to_string());
+                    }
+                } else if seen.insert(path.to_path_buf()) {
+                    resolved.push(src_str.clone());
+                }
+            }
+        } else if path.is_dir() {
+            for entry in walkdir::WalkDir::new(path)
+                .follow_links(true)
+                .into_iter()
+                .filter_entry(|e| {
+                    let name = e.file_name().to_string_lossy();
+                    !name.starts_with('.') && name != "node_modules"
+                })
+                .flatten()
+            {
+                let p = entry.path();
+                if is_supported_video_file(p) {
+                    if let Ok(canonical) = p.canonicalize() {
+                        if seen.insert(canonical) {
+                            resolved.push(p.to_string_lossy().to_string());
+                        }
+                    } else if seen.insert(p.to_path_buf()) {
+                        resolved.push(p.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    resolved.sort();
+    resolved
+}
+
+#[tauri::command]
+fn scan_video_sources(sources: Vec<String>) -> Vec<String> {
+    scan_sources_internal(&sources)
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct BatchImportProgress {
+    pub current: usize,
+    pub total: usize,
+    pub filename: String,
+    pub percent: u8,
+    pub status: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct BatchImportResult {
+    pub imported: Vec<WallpaperItem>,
+    pub total_requested: usize,
+    pub failed: Vec<String>,
+}
+
+#[tauri::command]
+async fn batch_import_wallpapers(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    source_paths: Vec<String>,
+) -> Result<BatchImportResult, String> {
+    use tauri::{Emitter, Manager};
+
+    let wp_mgr = state.wallpaper_mgr.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let valid_paths = scan_sources_internal(&source_paths);
+        let total = valid_paths.len();
+        let mut imported = Vec::new();
+        let mut failed = Vec::new();
+
+        if total == 0 {
+            return Ok(BatchImportResult {
+                imported: Vec::new(),
+                total_requested: 0,
+                failed: Vec::new(),
+            });
+        }
+
+        let mut library = wp_mgr.load_library();
+
+        for (idx, path) in valid_paths.iter().enumerate() {
+            let current = idx + 1;
+            let filename = Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("video")
+                .to_string();
+            let percent = ((current as f32 / total as f32) * 100.0).round() as u8;
+
+            let progress = BatchImportProgress {
+                current,
+                total,
+                filename: filename.clone(),
+                percent,
+                status: "processing".to_string(),
+            };
+            let _ = app.emit("batch-import-progress", &progress);
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.emit("batch-import-progress", &progress);
+            }
+
+            match import_single_file_to_storage(&wp_mgr, path) {
+                Ok(item) => {
+                    library.push(item.clone());
+                    imported.push(item);
+                }
+                Err(err) => {
+                    eprintln!("[AnimatedLinux] Failed to import {}: {}", path, err);
+                    failed.push(format!("{}: {}", filename, err));
+                }
+            }
+        }
+
+        if !imported.is_empty() {
+            let _ = wp_mgr.save_library(&library);
+        }
+
+        let finish_progress = BatchImportProgress {
+            current: total,
+            total,
+            filename: "Completed".to_string(),
+            percent: 100,
+            status: "finished".to_string(),
+        };
+        let _ = app.emit("batch-import-progress", &finish_progress);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.emit("batch-import-progress", &finish_progress);
+        }
+
+        Ok(BatchImportResult {
+            imported,
+            total_requested: total,
+            failed,
+        })
+    })
+    .await
+    .map_err(|e| format!("Batch import task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -1436,6 +1652,9 @@ fn main() {
             import_wallpaper,
             get_quick_preview,
             select_video_files,
+            select_video_folder,
+            scan_video_sources,
+            batch_import_wallpapers,
             select_and_import_videos,
             delete_wallpaper,
             rename_wallpaper,
@@ -1499,7 +1718,39 @@ mod tests {
         assert!(desktop_file.exists());
         let content = std::fs::read_to_string(&desktop_file).unwrap();
         println!("Generated desktop entry:\n{}", content);
-        assert!(content.contains("Exec=\"/home/martin/Applications/Animated_Linux-x86_64.AppImage\""));
+        let (expected_exe, _) = resolve_app_executable_and_icon();
+        assert!(content.contains(&format!("Exec=\"{}\"", expected_exe)));
         assert!(content.contains("Icon=animated-linux"));
+    }
+
+    #[test]
+    fn test_scan_sources_internal_recursive() {
+        let temp_dir = std::env::temp_dir().join(format!("anim_linux_test_{}", uuid_simple()));
+        let sub_dir = temp_dir.join("nested_folder");
+        let hidden_dir = temp_dir.join(".hidden");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        std::fs::create_dir_all(&hidden_dir).unwrap();
+
+        let vid1 = temp_dir.join("sample.mp4");
+        let vid2 = sub_dir.join("clip.WEBM");
+        let txt = temp_dir.join("document.txt");
+        let hidden_vid = hidden_dir.join("secret.mp4");
+
+        std::fs::write(&vid1, b"mock video 1").unwrap();
+        std::fs::write(&vid2, b"mock video 2").unwrap();
+        std::fs::write(&txt, b"mock text").unwrap();
+        std::fs::write(&hidden_vid, b"mock hidden").unwrap();
+
+        let sources = vec![temp_dir.to_string_lossy().to_string()];
+        let found = scan_sources_internal(&sources);
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().any(|f| f.ends_with("sample.mp4")));
+        assert!(found.iter().any(|f| f.ends_with("clip.WEBM")));
+        assert!(!found.iter().any(|f| f.ends_with("document.txt")));
+        assert!(!found.iter().any(|f| f.ends_with("secret.mp4")));
     }
 }

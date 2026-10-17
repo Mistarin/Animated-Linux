@@ -21,11 +21,13 @@ impl MonitorDetector {
                                     let connector = out.get("name").and_then(|n| n.as_str()).unwrap_or("Display").to_string();
                                     let width = out.get("size").and_then(|s| s.get("width")).and_then(|w| w.as_i64()).unwrap_or(1920);
                                     let height = out.get("size").and_then(|s| s.get("height")).and_then(|h| h.as_i64()).unwrap_or(1080);
+                                    let is_primary = out.get("primary").and_then(|p| p.as_bool()).unwrap_or(idx == 0);
                                     screens.push(ScreenInfo {
                                         id: idx,
                                         name: connector,
                                         resolution: format!("{}x{}", width, height),
                                         current_wallpaper: None,
+                                        is_main: is_primary,
                                     });
                                     idx += 1;
                                 }
@@ -58,6 +60,7 @@ impl MonitorDetector {
                             name: format!("Display {}", screen_id + 1),
                             resolution: "Primary Display".to_string(),
                             current_wallpaper: None,
+                            is_main: i == 0,
                         });
                     }
                     return screens;
@@ -71,6 +74,7 @@ impl MonitorDetector {
             name: "Primary Monitor".to_string(),
             resolution: "1920x1080".to_string(),
             current_wallpaper: None,
+            is_main: true,
         });
 
         screens

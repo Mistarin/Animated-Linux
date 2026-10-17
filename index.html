@@ -104,10 +104,21 @@
 
       <!-- Displays Tab -->
       <section id="tab-displays" class="hidden">
-        <div class="section-header">
-          <h2 class="section-title">Connected Displays</h2>
+        <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="section-title">Connected Displays</h2>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+              Manage active wallpaper outputs and configure the primary main display source.
+            </p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 0.82rem; color: var(--text-secondary); white-space: nowrap;">Main Source Display:</span>
+            <select id="select-main-display-top" class="select-sort" style="min-width: 170px;" title="Select the main display source used for active window tracking">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
         </div>
-        <div id="displays-list" style="display: flex; flex-direction: column; gap: 12px;">
+        <div id="displays-list" style="display: flex; flex-direction: column; gap: 12px; margin-top: 14px;">
           <!-- Display items dynamically populated -->
         </div>
       </section>
@@ -230,13 +241,19 @@
 
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                   <div>
-                    <div style="font-size: 0.82rem; color: var(--text-secondary);">Pause Scope:</div>
-                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Pause wallpaper only on covered monitor or globally across all screens</div>
+                    <div style="font-size: 0.82rem; color: var(--text-secondary);">Active Window Detection:</div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;" id="desc-pause-detection">Base detection on individual screens, the main display, or globally</div>
                   </div>
-                  <select id="setting-pause-scope" style="min-width: 170px;">
-                    <option value="individual" selected>Individual Monitors</option>
-                    <option value="global">All Monitors (Everyone)</option>
+                  <select id="setting-pause-scope" style="min-width: 190px;" title="Select how active window detection is scoped">
+                    <option value="individual" selected>Individual Screens</option>
+                    <option value="main">Main Display</option>
+                    <option value="all">All Screens (Global)</option>
                   </select>
+                </div>
+
+                <div id="main-display-hint" style="display: none; font-size: 0.76rem; color: #60a5fa; background: rgba(59, 130, 246, 0.08); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(59, 130, 246, 0.22); align-items: center; justify-content: space-between;">
+                  <span>Active window tracking follows <strong id="hint-main-display-name">Main Display</strong>.</span>
+                  <a href="#" id="link-configure-displays" style="color: #93c5fd; text-decoration: underline; margin-left: 8px;">Change in Displays</a>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">

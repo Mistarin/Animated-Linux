@@ -158,8 +158,18 @@ fi
 # If explicit build requested, compile the single executable only
 if [ "$ACTION" = "build" ]; then
     print_header
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo ""
+        echo "[Error] 'cargo' (Rust) was not found in PATH."
+        echo "To compile Animated Linux, install Rust & Cargo first:"
+        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        echo ""
+        exit 1
+    fi
     echo "[Launcher] Compiling standalone native executable..."
-    bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+    pnpm tauri build --no-bundle
+    mkdir -p "$ROOT_DIR/dist"
+    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64" 2>/dev/null || true
     echo "[Launcher] Build finished. Launching executable..."
 fi
 
@@ -186,8 +196,10 @@ if [ -z "$FOUND_BINARY" ]; then
         echo ""
         exit 1
     fi
-    echo "[Launcher] Building standalone native executable..."
-    bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+    echo "[Launcher] Compiling standalone native executable..."
+    pnpm tauri build --no-bundle
+    mkdir -p "$ROOT_DIR/dist"
+    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64" 2>/dev/null || true
     if [ -f "$ROOT_DIR/src-tauri/target/release/animated-linux" ]; then
         FOUND_BINARY="$ROOT_DIR/src-tauri/target/release/animated-linux"
     elif [ -f "$ROOT_DIR/dist/animated-linux-x86_64" ]; then

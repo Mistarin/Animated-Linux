@@ -431,6 +431,8 @@ print(JSON.stringify(results));
         inactive_black_screen: bool,
         restart_on_resume: bool,
         pause_per_monitor: bool,
+        pause_detection_mode: Option<String>,
+        main_display_id: Option<i32>,
     ) -> Result<PlaybackSettings, String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.quality_level = quality_level.clamp(1, 5);
@@ -441,12 +443,35 @@ print(JSON.stringify(results));
         settings.inactive_black_screen = inactive_black_screen;
         settings.restart_on_resume = restart_on_resume;
         settings.pause_per_monitor = pause_per_monitor;
+        if let Some(mode) = pause_detection_mode {
+            settings.pause_detection_mode = mode;
+        }
+        if let Some(main_id) = main_display_id {
+            settings.main_display_id = main_id;
+        }
         let updated = settings.clone();
         drop(settings);
 
         self.save_settings(&updated);
 
         // If a wallpaper is currently active, re-apply with new performance parameters
+        let active = self.active_wallpaper.lock().unwrap().clone();
+        if let Some(wp) = active {
+            let backend = self.get_active_backend();
+            let _ = backend.apply(&wp, None, &updated);
+        }
+
+        Ok(updated)
+    }
+
+    pub fn set_main_display(&self, display_id: i32) -> Result<PlaybackSettings, String> {
+        let mut settings = self.current_settings.lock().unwrap();
+        settings.main_display_id = display_id;
+        let updated = settings.clone();
+        drop(settings);
+
+        self.save_settings(&updated);
+
         let active = self.active_wallpaper.lock().unwrap().clone();
         if let Some(wp) = active {
             let backend = self.get_active_backend();
@@ -740,5 +765,25 @@ mod tests {
         let legacy_json = "{\"volume\":50,\"speed\":1.0}";
         let legacy_settings: PlaybackSettings = serde_json::from_str(legacy_json).unwrap();
         assert!(!legacy_settings.start_minimized);
+        assert_eq!(legacy_settings.pause_detection_mode, "individual");
+        assert_eq!(legacy_settings.main_display_id, 0);
+    }
+
+    #[test]
+    fn test_pause_detection_mode_and_main_display_persistence() {
+        let mut settings = PlaybackSettings::default();
+        assert_eq!(settings.pause_detection_mode, "individual");
+        assert_eq!(settings.main_display_id, 0);
+
+        settings.pause_detection_mode = "main".to_string();
+        settings.main_display_id = 2;
+
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains("\"pause_detection_mode\":\"main\""));
+        assert!(serialized.contains("\"main_display_id\":2"));
+
+        let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.pause_detection_mode, "main");
+        assert_eq!(deserialized.main_display_id, 2);
     }
 }

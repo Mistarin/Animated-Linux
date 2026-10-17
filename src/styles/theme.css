@@ -1733,3 +1733,34 @@ select option {
   border-radius: 50%;
 }
 
+/* Displays & Main Source Styling */
+.badge-main-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
+}
+
+.display-card {
+  transition: all var(--transition-fast);
+}
+
+.display-card-main {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  background: rgba(20, 22, 30, 0.95) !important;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.06);
+}
+
+.btn-set-main {
+  font-size: 0.82rem;
+  padding: 6px 14px;
+}
+
+

@@ -134,9 +134,11 @@ Animated-Linux/
 │   ├── icons.js               # SVG icon set
 │   └── styles/
 │       └── theme.css          # Dark zinc stylesheet
-├── setup/                     # Build & launch scripts
-│   ├── launch.sh              # Production / dev launcher
-│   └── build_image.sh         # Binary & container builder
+├── setup/                     # Setup & installation scripts
+│   ├── launch.sh              # Launcher forwarder
+│   ├── launch-dev.sh          # Live development server runner
+│   └── install_plasma_mpv.sh  # KDE Plasma MPV backend installer
+├── launch.sh                  # Main application launcher
 ├── wallpapers/                # Local persistent wallpaper storage
 │   └── thumbnails/            # Thumbnail cache
 └── assets/sample_wallpapers/  # Bundled sample loops

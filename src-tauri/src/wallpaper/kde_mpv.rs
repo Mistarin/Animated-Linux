@@ -80,7 +80,8 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
             _ => 0,
         };
         let pause_on_bat = settings.pause_policy == 4;
-        let pause_filter_by_screen = settings.pause_per_monitor;
+        let pause_detection_mode = &settings.pause_detection_mode;
+        let main_screen = settings.main_display_id;
         let is_muted = settings.is_muted;
         let volume = settings.volume;
         let speed = settings.speed;
@@ -94,6 +95,8 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
             r#"
 var allDesktops = desktops();
 var target = {target_screen};
+var mainScreen = {main_screen};
+var detectionMode = "{pause_detection_mode}";
 var videoSource = {video_source_json};
 
 for (var i = 0; i < allDesktops.length; i++) {{
@@ -105,7 +108,13 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("WallpaperSource", videoSource);
         d.writeConfig("DisplayMode", {display_mode});
         d.writeConfig("PauseMode", {pause_mode});
-        d.writeConfig("PauseFilterByScreen", {pause_filter_by_screen});
+        var filterByScreen = (detectionMode === "individual");
+        if (detectionMode === "main") {{
+            filterByScreen = (d.screen === mainScreen);
+        }}
+        d.writeConfig("PauseFilterByScreen", filterByScreen);
+        d.writeConfig("PauseDetectionMode", detectionMode);
+        d.writeConfig("MainDisplayId", mainScreen);
         d.writeConfig("PauseOnBatPower", {pause_on_bat});
         d.writeConfig("Fps", {target_fps});
         d.writeConfig("MuteAudio", {is_muted});
@@ -120,10 +129,11 @@ for (var i = 0; i < allDesktops.length; i++) {{
 print("Applied MPV wallpaper to target " + target);
 "#,
             target_screen = target_screen,
+            main_screen = main_screen,
+            pause_detection_mode = pause_detection_mode,
             video_source_json = video_source_json,
             display_mode = display_mode,
             pause_mode = pause_mode,
-            pause_filter_by_screen = pause_filter_by_screen,
             pause_on_bat = pause_on_bat,
             target_fps = target_fps,
             is_muted = is_muted,
@@ -173,7 +183,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
             _ => 0,
         };
         let pause_on_bat = settings.pause_policy == 4;
-        let pause_filter_by_screen = settings.pause_per_monitor;
+        let pause_detection_mode = &settings.pause_detection_mode;
+        let main_screen = settings.main_display_id;
         let inactive_black = settings.inactive_black_screen;
         let restart_on_resume = settings.restart_on_resume;
         let speed = settings.speed;
@@ -193,6 +204,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
             r#"
 var allDesktops = desktops();
 var target = {target_screen};
+var mainScreen = {main_screen};
+var detectionMode = "{pause_detection_mode}";
 var videoSource = {video_source_js};
 
 for (var i = 0; i < allDesktops.length; i++) {{
@@ -208,7 +221,13 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("InactiveBlackScreen", {inactive_black});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("PauseMode", {pause_mode});
-        d.writeConfig("PauseFilterByScreen", {pause_filter_by_screen});
+        var filterByScreen = (detectionMode === "individual");
+        if (detectionMode === "main") {{
+            filterByScreen = (d.screen === mainScreen);
+        }}
+        d.writeConfig("PauseFilterByScreen", filterByScreen);
+        d.writeConfig("PauseDetectionMode", detectionMode);
+        d.writeConfig("MainDisplayId", mainScreen);
         d.writeConfig("PauseOnBatPower", {pause_on_bat});
         d.writeConfig("Speed", {speed});
         d.writeConfig("UserPaused", false);
@@ -217,13 +236,14 @@ for (var i = 0; i < allDesktops.length; i++) {{
 }}
 "#,
             target_screen = target_screen,
+            main_screen = main_screen,
+            pause_detection_mode = pause_detection_mode,
             video_source_js = video_source_js,
             pause_mode = pause_mode,
-            pause_filter_by_screen = pause_filter_by_screen,
             pause_on_bat = pause_on_bat,
             speed = speed,
             inactive_black = inactive_black,
-            restart_on_resume = restart_on_resume
+            restart_on_resume = restart_on_resume,
         );
         Self::run_plasma_script(&script)?;
         Ok(())

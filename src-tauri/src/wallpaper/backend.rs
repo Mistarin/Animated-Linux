@@ -55,6 +55,8 @@ pub struct PlaybackSettings {
     pub restart_on_resume: bool,
     pub start_minimized: bool,
     pub pause_per_monitor: bool, // true: individual monitor, false: all monitors (everyone)
+    pub pause_detection_mode: String, // "individual", "main", "all"
+    pub main_display_id: i32,    // ID of the designated main display source
 }
 
 impl Default for PlaybackSettings {
@@ -76,6 +78,8 @@ impl Default for PlaybackSettings {
             restart_on_resume: false,
             start_minimized: false,
             pause_per_monitor: true,
+            pause_detection_mode: "individual".to_string(),
+            main_display_id: 0,
         }
     }
 }
@@ -86,6 +90,8 @@ pub struct ScreenInfo {
     pub name: String,
     pub resolution: String,
     pub current_wallpaper: Option<String>,
+    #[serde(default)]
+    pub is_main: bool,
 }
 
 pub trait WallpaperBackend: Send + Sync {

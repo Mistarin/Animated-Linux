@@ -14,6 +14,8 @@ let currentFillMode = 2; // 0: Stretch, 1: Fit, 2: Crop/Zoom, 3: Center
 let currentPanX = 0.0;
 let currentPanY = 0.0;
 let currentPausePolicy = 1; // 0: Never, 1: Fullscreen Game/App, 2: Maximized Window, 3: Any Window, 4: Battery
+let currentPauseDetection = 'individual'; // 'individual' | 'main' | 'all'
+let currentMainDisplayId = 0;
 let displays = [];
 let searchQuery = '';
 let currentSort = 'recent';
@@ -101,6 +103,11 @@ const settingQualityDesc = document.getElementById('setting-quality-desc');
 const settingFpsSelect = document.getElementById('setting-fps-select');
 const settingPausePolicy = document.getElementById('setting-pause-policy');
 const settingPauseScope = document.getElementById('setting-pause-scope');
+const selectMainDisplayTop = document.getElementById('select-main-display-top');
+const mainDisplayHint = document.getElementById('main-display-hint');
+const hintMainDisplayName = document.getElementById('hint-main-display-name');
+const linkConfigureDisplays = document.getElementById('link-configure-displays');
+const descPauseDetection = document.getElementById('desc-pause-detection');
 const btnResetDesktop = document.getElementById('btn-reset-desktop');
 const btnCompressActive = document.getElementById('btn-compress-active');
 const btnCompressAll = document.getElementById('btn-compress-all');
@@ -307,36 +314,104 @@ function setupSearch() {
 }
 
 // Displays
+function getMainDisplayName() {
+  const found = displays.find((d) => d.id === currentMainDisplayId);
+  return found ? found.name : `Display ${currentMainDisplayId + 1}`;
+}
+
+function updateMainDisplayHint() {
+  if (!mainDisplayHint || !hintMainDisplayName) return;
+  const isMain = settingPauseScope && settingPauseScope.value === 'main';
+  if (isMain) {
+    mainDisplayHint.style.display = 'flex';
+    hintMainDisplayName.textContent = getMainDisplayName();
+  } else {
+    mainDisplayHint.style.display = 'none';
+  }
+}
+
 async function refreshDisplays() {
   try {
     displays = await invoke('get_monitors');
     displayCount.textContent = displays.length;
+
+    // Detect if default main display should be set from system primary
+    const primary = displays.find((d) => d.is_main);
+    if (primary && localStorage.getItem('main_display_id') === null && currentMainDisplayId === 0) {
+      currentMainDisplayId = primary.id;
+    }
+
     renderDisplays();
+    updateMainDisplayHint();
   } catch (e) {
     console.error('Failed to get monitors:', e);
   }
 }
 
 function renderDisplays() {
+  if (!displaysList) return;
+
+  if (selectMainDisplayTop) {
+    selectMainDisplayTop.innerHTML = displays
+      .map(
+        (d) =>
+          `<option value="${d.id}" ${d.id === currentMainDisplayId ? 'selected' : ''}>${d.name} (${d.resolution}) ${d.id === currentMainDisplayId ? '★ Main' : ''}</option>`
+      )
+      .join('');
+  }
+
   displaysList.innerHTML = displays
-    .map(
-      (d) => `
-    <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius-md); padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
-      <div style="display: flex; align-items: center; gap: 14px;">
-        <div style="color: var(--text-muted);">${Icons.displays}</div>
+    .map((d) => {
+      const isMain = d.id === currentMainDisplayId;
+      return `
+    <div class="display-card ${isMain ? 'display-card-main' : ''}" style="background: var(--bg-card); border: 1px solid ${isMain ? 'rgba(59, 130, 246, 0.45)' : 'var(--border-card)'}; border-radius: var(--radius-md); padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; transition: var(--transition-fast);">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div style="color: ${isMain ? '#60a5fa' : 'var(--text-muted)'}; font-size: 1.25rem;">${Icons.displays}</div>
         <div>
-          <div style="font-weight: 500; font-size: 0.92rem; color: var(--text-main);">${d.name}</div>
-          <div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">Resolution: ${d.resolution} • ID: ${d.id}</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 500; font-size: 0.95rem; color: var(--text-main);">${d.name}</span>
+            ${isMain ? `<span class="badge-main-display">★ Main Display Source</span>` : ''}
+          </div>
+          <div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 3px;">
+            Resolution: ${d.resolution} • ID: ${d.id} ${isMain ? '• Active window detection source' : ''}
+          </div>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="window.applyToDisplay(${d.id})">
-        Apply Wallpaper
-      </button>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        ${!isMain ? `
+          <button class="btn btn-secondary btn-set-main" onclick="window.setAsMainDisplay(${d.id})" title="Set this screen as the Main Display Source for active window tracking">
+            Set as Main Source
+          </button>
+        ` : `
+          <button class="btn btn-secondary btn-set-main" disabled style="opacity: 0.65; cursor: default;">
+            ✓ Main Source
+          </button>
+        `}
+        <button class="btn btn-primary" onclick="window.applyToDisplay(${d.id})">
+          Apply Wallpaper
+        </button>
+      </div>
     </div>
-  `
-    )
+  `;
+    })
     .join('');
 }
+
+window.setAsMainDisplay = async (screenId) => {
+  currentMainDisplayId = screenId;
+  const target = displays.find((d) => d.id === screenId);
+  const targetName = target ? target.name : `Display ${screenId}`;
+
+  try {
+    await invoke('set_main_display', { displayId: screenId });
+  } catch (err) {
+    console.warn('Backend set_main_display call:', err);
+  }
+  localStorage.setItem('main_display_id', screenId.toString());
+  renderDisplays();
+  updateMainDisplayHint();
+  showToast(`"${targetName}" set as Main Display Source`, 'success');
+};
 
 window.applyToDisplay = async (screenId) => {
   if (!activeWallpaper) {
@@ -896,8 +971,30 @@ function setupPerformanceControls() {
 
   if (settingPauseScope) {
     settingPauseScope.addEventListener('change', async () => {
+      currentPauseDetection = settingPauseScope.value;
+      updateMainDisplayHint();
       await syncPerformanceSettings();
-      showToast(`Pause scope set to ${settingPauseScope.value === 'individual' ? 'Individual Monitors' : 'All Monitors (Everyone)'}`, 'info');
+      const label =
+        currentPauseDetection === 'main'
+          ? `Main Display (${getMainDisplayName()})`
+          : currentPauseDetection === 'individual'
+          ? 'Individual Screens'
+          : 'All Screens (Global)';
+      showToast(`Active window detection set to: ${label}`, 'info');
+    });
+  }
+
+  if (selectMainDisplayTop) {
+    selectMainDisplayTop.addEventListener('change', async (e) => {
+      await window.setAsMainDisplay(parseInt(e.target.value, 10));
+    });
+  }
+
+  if (linkConfigureDisplays) {
+    linkConfigureDisplays.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tab = document.getElementById('tab-btn-displays');
+      if (tab) tab.click();
     });
   }
 
@@ -1230,8 +1327,24 @@ async function loadPerformanceSettings() {
     if (chkStartMinimized && s.start_minimized !== undefined) {
       chkStartMinimized.checked = s.start_minimized;
     }
+    if (s.main_display_id !== undefined) {
+      currentMainDisplayId = s.main_display_id;
+    } else {
+      const savedMain = localStorage.getItem('main_display_id');
+      if (savedMain !== null) {
+        currentMainDisplayId = parseInt(savedMain, 10);
+      }
+    }
+
+    if (s.pause_detection_mode) {
+      currentPauseDetection = s.pause_detection_mode;
+    } else if (s.pause_per_monitor !== undefined) {
+      currentPauseDetection = s.pause_per_monitor ? 'individual' : 'all';
+    }
+
     if (settingPauseScope) {
-      settingPauseScope.value = (s.pause_per_monitor !== false) ? 'individual' : 'global';
+      settingPauseScope.value = currentPauseDetection;
+      updateMainDisplayHint();
     }
 
     // Restore saved library sort preference
@@ -1247,6 +1360,7 @@ async function loadPerformanceSettings() {
 
 async function syncPerformanceSettings() {
   try {
+    const pauseMode = settingPauseScope ? settingPauseScope.value : currentPauseDetection;
     await invoke('update_performance_settings', {
       qualityLevel: currentQuality,
       targetFps: currentFps,
@@ -1255,7 +1369,9 @@ async function syncPerformanceSettings() {
       hardwareAccel: chkHardwareAccel.checked,
       inactiveBlackScreen: chkInactiveBlack ? chkInactiveBlack.checked : false,
       restartOnResume: chkRestartOnResume ? chkRestartOnResume.checked : false,
-      pausePerMonitor: settingPauseScope ? (settingPauseScope.value === 'individual') : true,
+      pausePerMonitor: pauseMode === 'individual',
+      pauseDetectionMode: pauseMode,
+      mainDisplayId: currentMainDisplayId,
     });
   } catch (err) {
     console.error('Failed to sync performance settings:', err);

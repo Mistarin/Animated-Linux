@@ -8,15 +8,10 @@ echo "================================================================"
 echo "          Installing Animated Linux to Steam Library Shortcuts   "
 echo "================================================================"
 
-# Use release binary if built, otherwise debug
-EXE="$ROOT_DIR/src-tauri/target/release/animated-linux"
-if [ ! -f "$EXE" ]; then
-    EXE="$ROOT_DIR/src-tauri/target/debug/animated-linux"
-fi
-
-if [ ! -f "$EXE" ]; then
-    echo "[Notice] No compiled binary found. Compiling release binary first..."
-    bash "$ROOT_DIR/setup/build_image.sh" --binary-only
+# Point shortcut to launch script
+LAUNCH_SCRIPT="$ROOT_DIR/launch.sh"
+if [ ! -f "$LAUNCH_SCRIPT" ]; then
+    LAUNCH_SCRIPT="$ROOT_DIR/setup/launch.sh"
 fi
 
 # Run helper python script to write binary shortcuts.vdf and copy artwork
@@ -24,7 +19,7 @@ python3 - << EOF
 import os, glob, shutil
 
 app_dir = "$ROOT_DIR"
-exe_path = "$EXE"
+exe_path = "$LAUNCH_SCRIPT"
 app_name = "Animated Linux"
 
 def compute_shortcut_id(exe, name):

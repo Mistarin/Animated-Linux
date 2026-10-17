@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "./run.sh",
+    "start": "./launch.sh",
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri"

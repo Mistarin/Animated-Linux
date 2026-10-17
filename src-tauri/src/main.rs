@@ -22,7 +22,7 @@ use std::process::Command;
 
 pub fn new_host_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
     let mut cmd = Command::new(program);
-    // If running inside an AppImage, restore original host environment so external binaries (mpv, ffmpeg, qdbus) load host GPU drivers
+    // Restore host environment if needed so external binaries (mpv, ffmpeg, qdbus) load host GPU drivers
     if let Ok(orig_ld) = std::env::var("LD_LIBRARY_PATH_ORIG") {
         cmd.env("LD_LIBRARY_PATH", orig_ld);
     } else if let Ok(orig_ld) = std::env::var("ORIG_LD_LIBRARY_PATH") {
@@ -1367,90 +1367,36 @@ fn resolve_app_executable_and_icon() -> (String, String) {
     let mut exe_str = String::new();
     let mut icon_str = String::new();
 
-    // 1. If currently executing from an AppImage, std::env::var("APPIMAGE") points directly to it
-    if let Ok(appimage_env) = std::env::var("APPIMAGE") {
-        let p = PathBuf::from(appimage_env.trim());
-        if p.is_file() {
-            exe_str = p.to_string_lossy().to_string();
+    // 1. Prioritize launch.sh so desktop entries and shortcuts execute through the launch script
+    if let Ok(cur) = std::env::current_exe() {
+        let mut p = cur.parent();
+        while let Some(dir) = p {
+            let launch_root = dir.join("launch.sh");
+            let launch_setup = dir.join("setup").join("launch.sh");
+            if launch_root.is_file() {
+                exe_str = launch_root.to_string_lossy().to_string();
+                break;
+            } else if launch_setup.is_file() {
+                exe_str = launch_setup.to_string_lossy().to_string();
+                break;
+            }
+            p = dir.parent();
         }
     }
 
-    // 2. Scan for candidates (both AppImages and Native Binaries) and select the newest built artifact
     if exe_str.is_empty() {
-        let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-        let mut check_dirs: Vec<PathBuf> = Vec::new();
-
-        if let Ok(cur) = std::env::current_exe() {
-            let mut p = cur.parent();
-            while let Some(dir) = p {
-                check_dirs.push(dir.to_path_buf());
-                check_dirs.push(dir.join("dist"));
-                check_dirs.push(dir.join("src-tauri").join("target").join("release"));
-                check_dirs.push(dir.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
-                p = dir.parent();
-            }
-        }
-
         if let Ok(cwd) = std::env::current_dir() {
-            check_dirs.push(cwd.clone());
-            check_dirs.push(cwd.join("dist"));
-            check_dirs.push(cwd.join("src-tauri").join("target").join("release"));
-            check_dirs.push(cwd.join("src-tauri").join("target").join("release").join("bundle").join("appimage"));
-        }
-
-        if let Some(home) = dirs::home_dir() {
-            check_dirs.push(home.join("Applications"));
-            check_dirs.push(home.join(".local").join("bin"));
-            check_dirs.push(home.join("bin"));
-        }
-
-        for dir in check_dirs {
-            if dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_file() {
-                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
-                            let is_appimage = name.ends_with(".appimage") && (name.contains("animated") || name.contains("aether"));
-                            let is_native_bin = (name == "animated-linux" || name == "animated-linux-x86_64") && !path.to_string_lossy().contains("/.mount_");
-                            if is_appimage || is_native_bin {
-                                if let Ok(meta) = path.metadata() {
-                                    let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                                    candidates.push((mtime, path));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort descending by modification time: the newest built artifact wins
-        candidates.sort_by(|a, b| b.0.cmp(&a.0));
-        if let Some((_, newest_target)) = candidates.into_iter().next() {
-            exe_str = newest_target.to_string_lossy().to_string();
-        }
-    }
-
-    // 3. Fallback to launcher scripts (run.sh or setup/launch.sh)
-    if exe_str.is_empty() {
-        if let Ok(current_exe) = std::env::current_exe() {
-            let mut check_dir = current_exe.parent();
-            while let Some(dir) = check_dir {
-                let run_sh = dir.join("run.sh");
-                let launch_sh = dir.join("setup").join("launch.sh");
-                if run_sh.exists() {
-                    exe_str = run_sh.to_string_lossy().to_string();
-                    break;
-                } else if launch_sh.exists() {
-                    exe_str = launch_sh.to_string_lossy().to_string();
-                    break;
-                }
-                check_dir = dir.parent();
+            let launch_root = cwd.join("launch.sh");
+            let launch_setup = cwd.join("setup").join("launch.sh");
+            if launch_root.is_file() {
+                exe_str = launch_root.to_string_lossy().to_string();
+            } else if launch_setup.is_file() {
+                exe_str = launch_setup.to_string_lossy().to_string();
             }
         }
     }
 
+    // 2. Fallback to native binary if launch script not located
     if exe_str.is_empty() {
         if let Ok(cur) = std::env::current_exe() {
             let cur_str = cur.to_string_lossy().to_string();
@@ -1464,7 +1410,7 @@ fn resolve_app_executable_and_icon() -> (String, String) {
         }
     }
 
-    // 4. Resolve icon
+    // 3. Resolve icon
     if let Ok(current_exe) = std::env::current_exe() {
         let mut check_dir = current_exe.parent();
         while let Some(dir) = check_dir {

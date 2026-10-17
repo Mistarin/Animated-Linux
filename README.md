@@ -93,20 +93,25 @@ cd Animated-Linux
 pnpm install
 ```
 
-### 3. Run Development Mode
+### 3. Run Directly From Source
 ```bash
-./setup/launch.sh --dev
+./launch.sh --dev
 ```
 
-### 4. Build Release Binary
+### 4. Build Standalone Executable (Optional)
 ```bash
-./setup/build_image.sh --binary-only
+./launch.sh --build
 ```
-The optimized executable will be located at `dist/aetherpaper-x86_64`.
+Compiles a single native executable at `dist/animated-linux-x86_64` without packaging.
 
-### 5. Launch Release
+### 5. Launch Executable
 ```bash
-./setup/launch.sh
+./launch.sh
+```
+
+### 6. Install Desktop Menu Entry
+```bash
+./launch.sh --install-desktop
 ```
 
 ---

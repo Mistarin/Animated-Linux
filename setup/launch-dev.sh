@@ -61,5 +61,18 @@ if [ ! -d "$ROOT_DIR/node_modules" ] || [ ! -f "$ROOT_DIR/node_modules/@tauri-ap
     pnpm install
 fi
 
+# Ensure Rust & Cargo are installed
+if ! command -v cargo >/dev/null 2>&1; then
+    echo ""
+    echo "[Error] 'cargo' (Rust) was not found in PATH."
+    echo "Animated Linux is built with Tauri, which requires Rust to run or compile the backend."
+    echo ""
+    echo "To install Rust, run:"
+    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "  source \$HOME/.cargo/env"
+    echo ""
+    exit 1
+fi
+
 echo "[Launcher] Starting Tauri development server with Live HMR..."
 exec pnpm tauri dev "$@"

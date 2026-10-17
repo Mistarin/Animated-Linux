@@ -32,8 +32,8 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["deb"],
+    "active": false,
+    "targets": [],
     "icon": [
       "icons/icon.png"
     ]

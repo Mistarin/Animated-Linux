@@ -793,17 +793,12 @@ function setupMediaControls() {
         activeWallpaper = null;
         isPlaying = false;
         nowPlayingTitle.textContent = 'No Wallpaper Active';
-        const isInactiveBlack = chkInactiveBlack && chkInactiveBlack.checked;
-        nowPlayingSub.textContent = isInactiveBlack
-          ? 'Desktop transitioned to black screen'
-          : 'Desktop restored to default static wallpaper';
+        nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
         btnTogglePlay.innerHTML = Icons.play;
         updateActivePlayerBadge(null);
         checkVariantCacheState();
         renderLibrary();
-        showToast(isInactiveBlack
-          ? 'Wallpaper stopped; screen faded to black'
-          : 'Wallpaper stopped; desktop safely restored', 'info');
+        showToast('Wallpaper stopped; desktop safely restored', 'info');
       } catch (e) {
         console.error(e);
         showToast('Failed to stop wallpaper: ' + e, 'error');

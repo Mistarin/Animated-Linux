@@ -1548,7 +1548,7 @@ fn set_autostart(enable: bool) -> Result<bool, String> {
              Name=Animated Linux\n\
              GenericName=Animated Wallpaper Engine\n\
              Comment=Hardware-accelerated animated wallpaper engine for Linux\n\
-             Exec=\"{}\" --autostart\n\
+             Exec=\"{}\" --autostart --minimized\n\
              Icon=animated-linux\n\
              Terminal=false\n\
              Categories=Utility;Settings;\n\
@@ -1626,12 +1626,12 @@ fn main() {
         })
         .setup(move |app| {
             let args: Vec<String> = std::env::args().collect();
-            let is_explicit_minimized = args.iter().any(|a| a == "--minimized" || a == "--hidden");
+            let is_explicit_minimized = args.iter().any(|a| a == "--minimized" || a == "--hidden" || a == "--background");
             let is_explicit_show = args.iter().any(|a| a == "--open" || a == "--show");
             let is_autostart = args.iter().any(|a| a == "--autostart");
             let start_minimized = wallpaper_mgr.get_start_minimized();
 
-            let should_hide = !is_explicit_show && (is_explicit_minimized || start_minimized || (is_autostart && start_minimized));
+            let should_hide = !is_explicit_show && (is_explicit_minimized || is_autostart || start_minimized);
             if should_hide {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {

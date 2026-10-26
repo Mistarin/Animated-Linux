@@ -82,24 +82,94 @@ uninstall_desktop_entry() {
     fi
 }
 
+is_outdated() {
+    local target="$1"
+    if [ ! -f "$target" ]; then
+        return 0
+    fi
+    local newer_files
+    newer_files=$(find "$ROOT_DIR/src" "$ROOT_DIR/src-tauri/src" "$ROOT_DIR/index.html" "$ROOT_DIR/setup" "$ROOT_DIR/src-tauri/Cargo.toml" -type f -newer "$target" 2>/dev/null | head -n 1)
+    if [ -n "$newer_files" ]; then
+        return 0
+    fi
+    return 1
+}
+
+build_binary() {
+    print_header
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo ""
+        echo "[Error] 'cargo' (Rust) was not found in PATH."
+        echo "To compile Animated Linux, install Rust & Cargo first:"
+        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        echo ""
+        exit 1
+    fi
+    echo "[Launcher] Compiling standalone native executable..."
+    export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+    pnpm tauri build --no-bundle
+    mkdir -p "$ROOT_DIR/dist"
+    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64" 2>/dev/null || true
+    echo "[Launcher] Build finished."
+}
+
+install_autostart_entry() {
+    local autostart_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+    local autostart_file="$autostart_dir/animated-linux.desktop"
+
+    echo "[Launcher] Installing system startup autostart entry..."
+    mkdir -p "$autostart_dir"
+
+    cat << EOF > "$autostart_file"
+[Desktop Entry]
+Type=Application
+Name=Animated Linux
+GenericName=Animated Wallpaper Engine
+Comment=Hardware-accelerated animated wallpaper engine for Linux
+Exec="$ROOT_DIR/launch.sh" --autostart --minimized
+Icon=animated-linux
+Terminal=false
+Categories=Utility;Settings;
+X-GNOME-Autostart-enabled=true
+EOF
+
+    chmod +x "$autostart_file"
+    echo "[OK] Autostart entry installed: $autostart_file"
+    echo "     Exec -> $ROOT_DIR/launch.sh --autostart --minimized"
+}
+
+uninstall_autostart_entry() {
+    local autostart_file="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/animated-linux.desktop"
+    if [ -f "$autostart_file" ]; then
+        rm -f "$autostart_file"
+        echo "[Launcher] Removed autostart entry: $autostart_file"
+    else
+        echo "[Launcher] Autostart entry not found: $autostart_file"
+    fi
+}
+
 show_help() {
     print_header
     echo "Usage: ./launch.sh [OPTIONS] [-- APP_ARGS...]"
     echo ""
-    echo "Launches Animated Linux executable through this launch script."
+    echo "Launches Animated Linux through this master launch script."
     echo ""
     echo "Options:"
-    echo "  --dev, --source     Run directly from source with live reload (HMR)"
-    echo "  --build             Compile the standalone native executable"
-    echo "  --install-desktop   Create/update the desktop menu entry pointing to this launcher"
-    echo "  --uninstall-desktop Remove the desktop menu entry"
-    echo "  -h, --help          Show this help message"
+    echo "  --dev, --source       Run directly from source with live reload (HMR)"
+    echo "  --build               Compile or recompile the standalone native executable"
+    echo "  --background, -b      Run silently in the background (no GUI window)"
+    echo "  --install-desktop     Create/update the desktop start menu entry pointing to this launcher"
+    echo "  --uninstall-desktop   Remove the desktop start menu entry"
+    echo "  --install-autostart   Create/update the background startup entry pointing to this launcher"
+    echo "  --uninstall-autostart Remove the startup autostart entry"
+    echo "  -h, --help            Show this help message"
     echo ""
     echo "Examples:"
-    echo "  ./launch.sh                  # Launch native executable with proper environment"
-    echo "  ./launch.sh --dev            # Run live directly from source code"
-    echo "  ./launch.sh --build          # Build or recompile the standalone executable"
-    echo "  ./launch.sh --install-desktop# Register Animated Linux in desktop applications menu"
+    echo "  ./launch.sh                    # Launch (auto-recompiles if code changed)"
+    echo "  ./launch.sh --background       # Launch silently in background / system tray"
+    echo "  ./launch.sh --dev              # Run live directly from source code"
+    echo "  ./launch.sh --install-desktop  # Register in desktop applications start menu"
+    echo "  ./launch.sh --install-autostart# Register background startup on login"
     exit 0
 }
 
@@ -127,12 +197,24 @@ while [[ $# -gt 0 ]]; do
             ACTION="build"
             shift
             ;;
+        --background|-b)
+            PASSTHROUGH_ARGS+=("--background")
+            shift
+            ;;
         --install-desktop|-i)
             install_desktop_entry
             exit 0
             ;;
         --uninstall-desktop)
             uninstall_desktop_entry
+            exit 0
+            ;;
+        --install-autostart)
+            install_autostart_entry
+            exit 0
+            ;;
+        --uninstall-autostart)
+            uninstall_autostart_entry
             exit 0
             ;;
         -h|--help)
@@ -155,22 +237,11 @@ if [ "$ACTION" = "dev" ]; then
     exec "$ROOT_DIR/setup/launch-dev.sh" "${PASSTHROUGH_ARGS[@]}"
 fi
 
-# If explicit build requested, compile the single executable only
+# If explicit build requested, compile the executable only
 if [ "$ACTION" = "build" ]; then
-    print_header
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo ""
-        echo "[Error] 'cargo' (Rust) was not found in PATH."
-        echo "To compile Animated Linux, install Rust & Cargo first:"
-        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-        echo ""
-        exit 1
-    fi
-    echo "[Launcher] Compiling standalone native executable..."
-    pnpm tauri build --no-bundle
-    mkdir -p "$ROOT_DIR/dist"
-    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64" 2>/dev/null || true
-    echo "[Launcher] Build finished. Launching executable..."
+    build_binary
+    echo "[OK] Standalone native executable built: $ROOT_DIR/dist/animated-linux-x86_64"
+    exit 0
 fi
 
 # Locate existing native executable
@@ -183,23 +254,12 @@ elif [ -f "$ROOT_DIR/src-tauri/target/debug/animated-linux" ] && [ -x "$ROOT_DIR
     FOUND_BINARY="$ROOT_DIR/src-tauri/target/debug/animated-linux"
 fi
 
-if [ -z "$FOUND_BINARY" ]; then
-    print_header
-    echo "[Launcher] No pre-compiled executable found in repository."
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo ""
-        echo "[Error] 'cargo' (Rust) was not found in PATH."
-        echo "A fresh clone does not include binaries (they are gitignored)."
-        echo "To run or compile Animated Linux, Rust & Cargo must be installed:"
-        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-        echo "  source \$HOME/.cargo/env"
-        echo ""
-        exit 1
+if [ -z "$FOUND_BINARY" ] || is_outdated "$FOUND_BINARY"; then
+    if [ -n "$FOUND_BINARY" ]; then
+        echo "[Launcher] Source changes detected since previous build."
     fi
-    echo "[Launcher] Compiling standalone native executable..."
-    pnpm tauri build --no-bundle
-    mkdir -p "$ROOT_DIR/dist"
-    cp -f "$ROOT_DIR/src-tauri/target/release/animated-linux" "$ROOT_DIR/dist/animated-linux-x86_64" 2>/dev/null || true
+    echo "[Launcher] Auto-building up-to-date standalone release binary..."
+    build_binary
     if [ -f "$ROOT_DIR/src-tauri/target/release/animated-linux" ]; then
         FOUND_BINARY="$ROOT_DIR/src-tauri/target/release/animated-linux"
     elif [ -f "$ROOT_DIR/dist/animated-linux-x86_64" ]; then

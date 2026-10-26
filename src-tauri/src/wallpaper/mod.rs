@@ -522,6 +522,38 @@ for (var i = 0; i < allDesktops.length; i++) {
         Ok(())
     }
 
+    pub fn find_default_system_wallpaper() -> String {
+    let candidates = [
+        "/usr/share/wallpapers/Next/contents/images/5120x2880.png",
+        "/usr/share/wallpapers/Next/contents/images/3840x2160.png",
+        "/usr/share/wallpapers/cachyos-wallpapers/contents/images/3840x2160.png",
+        "/usr/share/wallpapers/Next/contents/images/1920x1080.png",
+    ];
+    for c in &candidates {
+        if Path::new(c).exists() {
+            return c.to_string();
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir("/usr/share/wallpapers") {
+        for entry in entries.flatten() {
+            let path = entry.path().join("contents").join("images");
+            if path.exists() {
+                if let Ok(imgs) = std::fs::read_dir(&path) {
+                    for img in imgs.flatten() {
+                        let p = img.path();
+                        if let Some(ext) = p.extension() {
+                            if ext == "png" || ext == "jpg" {
+                                return p.to_string_lossy().to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    "/usr/share/wallpapers/Next/contents/images/5120x2880.png".to_string()
+}
+
     pub fn restore_previous_wallpaper(&self) -> Result<(), String> {
         let backup_file = self.storage_dir.join("previous_wallpaper.json");
         let backups: Vec<DesktopWallpaperBackup> = if backup_file.exists() {
@@ -531,11 +563,24 @@ for (var i = 0; i < allDesktops.length; i++) {
                 Vec::new()
             }
         } else {
-            Vec::new()
+            // Check fallback in default user data directory
+            let alt_path = dirs::data_local_dir()
+                .map(|p| p.join("aetherpaper").join("wallpapers").join("previous_wallpaper.json"))
+                .unwrap_or_else(|| PathBuf::from("."));
+            if alt_path.exists() {
+                std::fs::read_to_string(&alt_path)
+                    .ok()
+                    .and_then(|c| serde_json::from_str::<Vec<DesktopWallpaperBackup>>(&c).ok())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
         };
 
         // Note: We retain previous_wallpaper.json so future desktop resets always have baseline configs
 
+        let fallback_img = Self::find_default_system_wallpaper();
+        let fallback_json = serde_json::to_string(&fallback_img).unwrap_or_else(|_| format!("\"{}\"", fallback_img));
         let backups_json = serde_json::to_string(&backups).unwrap_or_else(|_| "[]".to_string());
         let script = format!(
             r#"
@@ -555,28 +600,40 @@ for (var i = 0; i < allDesktops.length; i++) {{
         backup = backups[0];
     }}
 
+    var targetPlugin = "org.kde.image";
+    if (backup && backup.plugin && backup.plugin.length > 0 &&
+        backup.plugin !== "com.github.catsout.wallpaperEngineKde" &&
+        backup.plugin !== "luisbocanegra.smart.video.wallpaper.reborn" &&
+        backup.plugin !== "org.kde.color") {{
+        targetPlugin = backup.plugin;
+    }}
+
+    d.wallpaperPlugin = targetPlugin;
+    d.currentConfigGroup = Array("Wallpaper", targetPlugin, "General");
+
     if (backup && backup.config && backup.config.Image && backup.config.Image.length > 0) {{
-        d.wallpaperPlugin = "org.kde.image";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        var fillMode = backup.config.FillMode ? parseInt(backup.config.FillMode) : 2;
         d.writeConfig("Image", backup.config.Image);
-        d.writeConfig("FillMode", 2);
+        d.writeConfig("FillMode", fillMode);
+        if (backup.config.Color && backup.config.Color.length > 0) {{
+            d.writeConfig("Color", backup.config.Color);
+        }}
         d.reloadConfig();
     }} else {{
-        d.wallpaperPlugin = "org.kde.image";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
         var existingImg = d.readConfig("Image");
         if (existingImg && existingImg.length > 0) {{
             d.writeConfig("Image", existingImg);
             d.writeConfig("FillMode", 2);
         }} else {{
-            d.writeConfig("Image", "/usr/share/wallpapers/Next/contents/images/3840x2160.png");
+            d.writeConfig("Image", {fallback_json});
             d.writeConfig("FillMode", 2);
         }}
         d.reloadConfig();
     }}
 }}
 "#,
-            backups_json = backups_json
+            backups_json = backups_json,
+            fallback_json = fallback_json
         );
 
         let output = new_host_command("qdbus")
@@ -621,11 +678,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         let _ = self.mpv_backend.stop(None, &settings);
         let _ = self.plasma_mpv_backend.stop(None, &settings);
         let _ = self.plasma_backend.stop(None, &settings);
-        if settings.inactive_black_screen {
-            let _ = self.set_black_screen();
-        } else {
-            let _ = self.restore_previous_wallpaper();
-        }
+        let _ = self.restore_previous_wallpaper();
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
         Ok(())
@@ -671,7 +724,11 @@ for (var i = 0; i < allDesktops.length; i++) {{
     }
 
     pub fn save_library(&self, items: &[WallpaperItem]) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(items).map_err(|e| e.to_string())?;
+        let mut sanitized: Vec<WallpaperItem> = items.to_vec();
+        for item in &mut sanitized {
+            item.thumbnail_data = None;
+        }
+        let json = serde_json::to_string_pretty(&sanitized).map_err(|e| e.to_string())?;
         std::fs::write(&self.library_path, json).map_err(|e| e.to_string())?;
         Ok(())
     }

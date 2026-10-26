@@ -467,6 +467,7 @@ print(JSON.stringify(results));
         pause_per_monitor: bool,
         pause_detection_mode: Option<String>,
         main_display_id: Option<i32>,
+        debug_enabled: Option<bool>,
     ) -> Result<PlaybackSettings, String> {
         let mut settings = self.current_settings.lock().unwrap();
         settings.quality_level = quality_level.clamp(1, 5);
@@ -483,10 +484,17 @@ print(JSON.stringify(results));
         if let Some(main_id) = main_display_id {
             settings.main_display_id = main_id;
         }
+        if let Some(dbg) = debug_enabled {
+            settings.debug_enabled = dbg;
+        }
         let updated = settings.clone();
         drop(settings);
 
         self.save_settings(&updated);
+
+        if let Some(dbg) = debug_enabled {
+            let _ = self.plasma_backend.set_debug_enabled(dbg);
+        }
 
         // If a wallpaper is currently active, re-apply with new performance parameters
         let active = self.active_wallpaper.lock().unwrap().clone();
@@ -496,6 +504,17 @@ print(JSON.stringify(results));
         }
 
         Ok(updated)
+    }
+
+    pub fn set_debug_enabled(&self, enabled: bool) -> Result<bool, String> {
+        let mut settings = self.current_settings.lock().unwrap();
+        settings.debug_enabled = enabled;
+        let updated = settings.clone();
+        drop(settings);
+        self.save_settings(&updated);
+
+        let _ = self.plasma_backend.set_debug_enabled(enabled);
+        Ok(enabled)
     }
 
     pub fn set_main_display(&self, display_id: i32) -> Result<PlaybackSettings, String> {
@@ -972,5 +991,18 @@ mod tests {
         let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized.pause_detection_mode, "main");
         assert_eq!(deserialized.main_display_id, 2);
+    }
+
+    #[test]
+    fn test_debug_enabled_persistence() {
+        let mut settings = PlaybackSettings::default();
+        assert!(!settings.debug_enabled);
+
+        settings.debug_enabled = true;
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains("\"debug_enabled\":true"));
+
+        let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
+        assert!(deserialized.debug_enabled);
     }
 }

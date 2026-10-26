@@ -622,6 +622,7 @@ fn update_performance_settings(
     pause_per_monitor: bool,
     pause_detection_mode: Option<String>,
     main_display_id: Option<i32>,
+    debug_enabled: Option<bool>,
 ) -> Result<PlaybackSettings, String> {
     state.wallpaper_mgr.update_performance_settings(
         quality_level,
@@ -634,7 +635,27 @@ fn update_performance_settings(
         pause_per_monitor,
         pause_detection_mode,
         main_display_id,
+        debug_enabled,
     )
+}
+
+#[tauri::command]
+fn set_debug_enabled(state: State<'_, AppState>, enabled: bool) -> Result<bool, String> {
+    state.wallpaper_mgr.set_debug_enabled(enabled)
+}
+
+#[tauri::command]
+fn get_engine_logs() -> Result<String, String> {
+    let out = new_host_command("journalctl")
+        .arg("--user")
+        .arg("-u")
+        .arg("plasma-plasmashell")
+        .arg("-n")
+        .arg("60")
+        .arg("--no-pager")
+        .output()
+        .map_err(|e| format!("Failed to read journalctl: {}", e))?;
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 #[tauri::command]
@@ -1742,7 +1763,9 @@ fn main() {
             set_app_menu_entry,
             get_wallpaper_backend,
             set_wallpaper_backend,
-            set_main_display
+            set_main_display,
+            set_debug_enabled,
+            get_engine_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running Animated Linux tauri application");

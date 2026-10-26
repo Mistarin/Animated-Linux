@@ -103,6 +103,7 @@ pub struct PlaybackSettings {
     pub pause_per_monitor: bool, // true: individual monitor, false: all monitors (everyone)
     pub pause_detection_mode: String, // "individual", "main", "all"
     pub main_display_id: i32,    // ID of the designated main display source
+    pub debug_enabled: bool,     // Show on-screen desktop debug overlay and print logs
 }
 
 impl Default for PlaybackSettings {
@@ -126,6 +127,7 @@ impl Default for PlaybackSettings {
             pause_per_monitor: true,
             pause_detection_mode: "individual".to_string(),
             main_display_id: 0,
+            debug_enabled: false,
         }
     }
 }

@@ -123,8 +123,18 @@ const chkInactiveBlack = document.getElementById('chk-inactive-black');
 const chkRestartOnResume = document.getElementById('chk-restart-on-resume');
 const settingBackend = document.getElementById('setting-backend');
 const chkAutostart = document.getElementById('chk-autostart');
-const labelAutostartStatus = document.getElementById('label-autostart-status');
 const chkStartMinimized = document.getElementById('chk-start-minimized');
+const chkDebugWindow = document.getElementById('chk-debug-window');
+const badgeDebugStatus = document.getElementById('badge-debug-status');
+const labelDebugStatus = document.getElementById('label-debug-status');
+const btnOpenDebugModal = document.getElementById('btn-open-debug-modal');
+const modalDebugDiagnostics = document.getElementById('modal-debug-diagnostics');
+const btnCloseDebugModal = document.getElementById('btn-close-debug-modal');
+const btnCloseDebugModalX = document.getElementById('btn-close-debug-modal-x');
+const btnRefreshDebugLogs = document.getElementById('btn-refresh-debug-logs');
+const btnCopyDebugLogs = document.getElementById('btn-copy-debug-logs');
+const debugDiagnosticsSummary = document.getElementById('debug-diagnostics-summary');
+const debugLogsOutput = document.getElementById('debug-logs-output');
 
 const btnImport = document.getElementById('btn-import');
 const dropzone = document.getElementById('dropzone');
@@ -1232,6 +1242,111 @@ function setupPerformanceControls() {
     checkVariantCacheState();
     renderLibrary();
   });
+
+  if (chkDebugWindow) {
+    chkDebugWindow.addEventListener('change', async (e) => {
+      const enabled = e.target.checked;
+      updateDebugBadge(enabled);
+      try {
+        await invoke('set_debug_enabled', { enabled });
+        showToast(
+          enabled
+            ? 'Desktop debug overlay window enabled'
+            : 'Desktop debug overlay window disabled',
+          'info'
+        );
+      } catch (err) {
+        console.error('Failed to update debug window setting:', err);
+        showToast('Failed to toggle debug overlay: ' + err, 'error');
+      }
+    });
+  }
+
+  const hideDebugModal = () => {
+    if (modalDebugDiagnostics) modalDebugDiagnostics.classList.add('hidden');
+  };
+
+  const loadDebugDiagnostics = async () => {
+    if (!debugDiagnosticsSummary || !debugLogsOutput) return;
+    try {
+      debugLogsOutput.textContent = 'Fetching engine logs...';
+      const [backend, logs] = await Promise.all([
+        invoke('get_wallpaper_backend').catch(() => 'unknown'),
+        invoke('get_engine_logs').catch((e) => 'Failed to query logs: ' + e),
+      ]);
+
+      const policyNames = {
+        0: 'Never Pause (Always Play)',
+        1: 'Fullscreen Game / App',
+        2: 'Maximized Window Active',
+        3: 'Any Window Active',
+        4: 'Battery Power',
+      };
+
+      const items = [
+        { label: 'Active Backend', value: backend === 'kde' ? 'KDE Plasma 6 (Reborn)' : backend },
+        { label: 'Playback Status', value: isPlaying ? 'Playing' : 'Paused / Idle' },
+        { label: 'Active Wallpaper', value: activeWallpaper ? activeWallpaper.title : 'None' },
+        { label: 'Pausing Trigger', value: policyNames[currentPausePolicy] || currentPausePolicy },
+        { label: 'Window Detection Scope', value: currentPauseDetection },
+        { label: 'Desktop Overlay', value: chkDebugWindow && chkDebugWindow.checked ? 'Visible' : 'Hidden' },
+        { label: 'Hardware Accel', value: chkHardwareAccel && chkHardwareAccel.checked ? 'Enabled (VA-API)' : 'Software' },
+        { label: 'Target FPS', value: currentFps ? `${currentFps} FPS` : 'Native Rate' },
+      ];
+
+      debugDiagnosticsSummary.innerHTML = items
+        .map(
+          (it) => `
+        <div style="background: var(--bg-surface); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="font-size: 0.72rem; color: var(--text-muted);">${it.label}</div>
+          <div style="font-size: 0.82rem; font-weight: 500; color: var(--text-main); margin-top: 2px;">${it.value}</div>
+        </div>
+      `
+        )
+        .join('');
+
+      debugLogsOutput.textContent = logs || 'No recent engine logs found.';
+      debugLogsOutput.scrollTop = debugLogsOutput.scrollHeight;
+    } catch (err) {
+      debugLogsOutput.textContent = 'Error loading diagnostics: ' + err;
+    }
+  };
+
+  if (btnOpenDebugModal) {
+    btnOpenDebugModal.addEventListener('click', () => {
+      if (modalDebugDiagnostics) {
+        modalDebugDiagnostics.classList.remove('hidden');
+        loadDebugDiagnostics();
+      }
+    });
+  }
+
+  if (btnCloseDebugModal) btnCloseDebugModal.addEventListener('click', hideDebugModal);
+  if (btnCloseDebugModalX) btnCloseDebugModalX.addEventListener('click', hideDebugModal);
+  if (modalDebugDiagnostics) {
+    modalDebugDiagnostics.addEventListener('click', (e) => {
+      if (e.target === modalDebugDiagnostics) hideDebugModal();
+    });
+  }
+
+  if (btnRefreshDebugLogs) {
+    btnRefreshDebugLogs.addEventListener('click', () => {
+      loadDebugDiagnostics();
+    });
+  }
+
+  if (btnCopyDebugLogs) {
+    btnCopyDebugLogs.addEventListener('click', async () => {
+      if (debugLogsOutput) {
+        try {
+          await navigator.clipboard.writeText(debugLogsOutput.textContent);
+          showToast('Diagnostics logs copied to clipboard', 'success');
+        } catch (_) {
+          showToast('Failed to copy to clipboard', 'error');
+        }
+      }
+    });
+  }
 }
 
 // On quality slider change: instant switch if variant cached, else turn button green!
@@ -1375,6 +1490,10 @@ async function loadPerformanceSettings() {
     if (chkStartMinimized && s.start_minimized !== undefined) {
       chkStartMinimized.checked = s.start_minimized;
     }
+    if (chkDebugWindow && s.debug_enabled !== undefined) {
+      chkDebugWindow.checked = s.debug_enabled;
+      updateDebugBadge(s.debug_enabled);
+    }
     if (s.main_display_id !== undefined) {
       currentMainDisplayId = s.main_display_id;
     } else {
@@ -1406,6 +1525,17 @@ async function loadPerformanceSettings() {
   }
 }
 
+function updateDebugBadge(enabled) {
+  if (!badgeDebugStatus || !labelDebugStatus) return;
+  if (enabled) {
+    badgeDebugStatus.className = 'settings-badge settings-badge-active';
+    labelDebugStatus.textContent = 'Active on Desktop';
+  } else {
+    badgeDebugStatus.className = 'settings-badge settings-badge-inactive';
+    labelDebugStatus.textContent = 'Disabled';
+  }
+}
+
 async function syncPerformanceSettings() {
   try {
     const pauseMode = settingPauseScope ? settingPauseScope.value : currentPauseDetection;
@@ -1420,6 +1550,7 @@ async function syncPerformanceSettings() {
       pausePerMonitor: pauseMode === 'individual',
       pauseDetectionMode: pauseMode,
       mainDisplayId: currentMainDisplayId,
+      debugEnabled: chkDebugWindow ? chkDebugWindow.checked : false,
     });
   } catch (err) {
     console.error('Failed to sync performance settings:', err);

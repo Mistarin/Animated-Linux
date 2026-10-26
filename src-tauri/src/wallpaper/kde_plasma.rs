@@ -25,6 +25,23 @@ impl KdePlasmaBackend {
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
+
+    pub fn set_debug_enabled(&self, enabled: bool) -> Result<(), String> {
+        let script = format!(
+            r#"
+var allDesktops = desktops();
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+    d.writeConfig("DebugEnabled", {enabled});
+    d.reloadConfig();
+}}
+"#,
+            enabled = enabled
+        );
+        Self::run_plasma_script(&script)?;
+        Ok(())
+    }
 }
 
 impl WallpaperBackend for KdePlasmaBackend {
@@ -71,6 +88,7 @@ impl WallpaperBackend for KdePlasmaBackend {
             _ => 3,
         };
         let check_active_screen = settings.pause_detection_mode == "individual";
+        let debug_enabled = settings.debug_enabled;
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
@@ -128,6 +146,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("PlaybackRate", {speed_val});
         d.writeConfig("FillMode", {fill_mode});
         d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
+        d.writeConfig("DebugEnabled", {debug_enabled});
         d.writeConfig("PauseMode", {pause_mode});
         d.writeConfig("MuteMode", {mute_mode});
         d.writeConfig("Volume", {volume_val});
@@ -142,6 +161,7 @@ print("Applied successfully to target " + target);
             speed_val = speed_val,
             fill_mode = fill_mode,
             check_active_screen = check_active_screen,
+            debug_enabled = debug_enabled,
             pause_mode = pause_mode,
             mute_mode = mute_mode,
             volume_val = volume_val
@@ -182,6 +202,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             _ => 3,
         };
         let check_active_screen = settings.pause_detection_mode == "individual";
+        let debug_enabled = settings.debug_enabled;
 
         let restart_script = if settings.restart_on_resume {
             r#"
@@ -220,6 +241,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
 {restart_script}        d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
+        d.writeConfig("DebugEnabled", {debug_enabled});
         d.writeConfig("PauseMode", {pause_mode});
         d.reloadConfig();
     }}
@@ -228,6 +250,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             target_screen = target_screen,
             restart_script = restart_script,
             check_active_screen = check_active_screen,
+            debug_enabled = debug_enabled,
             pause_mode = pause_mode
         );
         Self::run_plasma_script(&script)?;

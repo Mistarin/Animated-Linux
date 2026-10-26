@@ -489,14 +489,31 @@ fn delete_wallpaper(state: State<'_, AppState>, id: String) -> Result<(), String
     let mut library = state.wallpaper_mgr.load_library();
     if let Some(pos) = library.iter().position(|w| w.id == id) {
         let item = library.remove(pos);
+        // Clean up main video, thumbnail, and all associated resolution variants/source files
         let _ = std::fs::remove_file(&item.file_path);
         let _ = std::fs::remove_file(&item.thumbnail_path);
 
-        // Clean up any generated resolution variant files
         let storage_dir = state.wallpaper_mgr.get_storage_dir();
-        for q in 1..=5 {
-            let variant_path = storage_dir.join(format!("{}_q{}.mp4", item.id, q));
-            let _ = std::fs::remove_file(variant_path);
+        if let Ok(entries) = std::fs::read_dir(&storage_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with(&format!("{}_", item.id)) || name.starts_with(&format!("{}.", item.id)) {
+                        let _ = std::fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+        let thumbs_dir = storage_dir.join("thumbnails");
+        if let Ok(entries) = std::fs::read_dir(&thumbs_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with(&item.id) {
+                        let _ = std::fs::remove_file(&p);
+                    }
+                }
+            }
         }
 
         state.wallpaper_mgr.save_library(&library)?;
@@ -659,10 +676,13 @@ fn switch_wallpaper_quality(
 
     let item = &mut library[pos];
     let wallpapers_dir = state.wallpaper_mgr.get_storage_dir();
+    let orig_file = wallpapers_dir.join(format!("{}.{}", id, item.format));
     let orig_backup = wallpapers_dir.join(format!("{}_source.{}", id, item.format));
 
     let variant_path = if quality_level == 5 {
-        if orig_backup.exists() {
+        if orig_file.exists() {
+            orig_file
+        } else if orig_backup.exists() {
             orig_backup
         } else {
             PathBuf::from(&item.file_path)
@@ -754,21 +774,19 @@ fn encode_variant_internal(
         return Err("Source video file does not exist".to_string());
     }
 
+    let orig_file = wallpapers_dir.join(format!("{}.{}", item_id, item_format));
     let orig_backup = wallpapers_dir.join(format!("{}_source.{}", item_id, item_format));
 
-    // Preserve original source untouched
-    if !orig_backup.exists() {
-        let _ = std::fs::copy(&current_video_path, &orig_backup);
-    }
-
-    let input_source = if orig_backup.exists() {
-        orig_backup.clone()
+    let input_source = if orig_file.exists() {
+        orig_file
+    } else if orig_backup.exists() {
+        orig_backup
     } else {
         current_video_path.clone()
     };
 
     let target_variant_path = if quality_level == 5 {
-        orig_backup.clone()
+        input_source.clone()
     } else {
         wallpapers_dir.join(format!("{}_q{}.mp4", item_id, quality_level))
     };
@@ -1376,20 +1394,29 @@ fn resolve_app_executable_and_icon() -> (String, String) {
     let mut exe_str = String::new();
     let mut icon_str = String::new();
 
+    // 0. If running inside an AppImage, point directly to the host AppImage file
+    if let Ok(appimage) = std::env::var("APPIMAGE") {
+        if !appimage.is_empty() && std::path::Path::new(&appimage).exists() {
+            exe_str = appimage;
+        }
+    }
+
     // 1. Prioritize launch.sh so desktop entries and shortcuts execute through the launch script
-    if let Ok(cur) = std::env::current_exe() {
-        let mut p = cur.parent();
-        while let Some(dir) = p {
-            let launch_root = dir.join("launch.sh");
-            let launch_setup = dir.join("setup").join("launch.sh");
-            if launch_root.is_file() {
-                exe_str = launch_root.to_string_lossy().to_string();
-                break;
-            } else if launch_setup.is_file() {
-                exe_str = launch_setup.to_string_lossy().to_string();
-                break;
+    if exe_str.is_empty() {
+        if let Ok(cur) = std::env::current_exe() {
+            let mut p = cur.parent();
+            while let Some(dir) = p {
+                let launch_root = dir.join("launch.sh");
+                let launch_setup = dir.join("setup").join("launch.sh");
+                if launch_root.is_file() {
+                    exe_str = launch_root.to_string_lossy().to_string();
+                    break;
+                } else if launch_setup.is_file() {
+                    exe_str = launch_setup.to_string_lossy().to_string();
+                    break;
+                }
+                p = dir.parent();
             }
-            p = dir.parent();
         }
     }
 

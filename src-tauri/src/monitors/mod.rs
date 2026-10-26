@@ -21,13 +21,20 @@ impl MonitorDetector {
                                     let connector = out.get("name").and_then(|n| n.as_str()).unwrap_or("Display").to_string();
                                     let width = out.get("size").and_then(|s| s.get("width")).and_then(|w| w.as_i64()).unwrap_or(1920);
                                     let height = out.get("size").and_then(|s| s.get("height")).and_then(|h| h.as_i64()).unwrap_or(1080);
+                                    let scale = out.get("scale").and_then(|sc| sc.as_f64()).unwrap_or(1.0);
                                     let is_primary = out.get("primary").and_then(|p| p.as_bool()).unwrap_or(idx == 0);
+                                    let res_str = if (scale - 1.0).abs() > 0.01 {
+                                        format!("{}x{} ({}% scale)", width, height, (scale * 100.0).round() as i64)
+                                    } else {
+                                        format!("{}x{}", width, height)
+                                    };
                                     screens.push(ScreenInfo {
                                         id: idx,
                                         name: connector,
-                                        resolution: format!("{}x{}", width, height),
+                                        resolution: res_str,
                                         current_wallpaper: None,
                                         is_main: is_primary,
+                                        scale,
                                     });
                                     idx += 1;
                                 }
@@ -61,6 +68,7 @@ impl MonitorDetector {
                             resolution: "Primary Display".to_string(),
                             current_wallpaper: None,
                             is_main: i == 0,
+                            scale: 1.0,
                         });
                     }
                     return screens;
@@ -75,6 +83,7 @@ impl MonitorDetector {
             resolution: "1920x1080".to_string(),
             current_wallpaper: None,
             is_main: true,
+            scale: 1.0,
         });
 
         screens

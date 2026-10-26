@@ -76,15 +76,19 @@ impl WallpaperManager {
                             for item in &mut items {
                                 let old_video = PathBuf::from(&item.file_path);
                                 if old_video.exists() {
-                                    let new_video = storage_dir.join(old_video.file_name().unwrap());
-                                    let _ = std::fs::copy(&old_video, &new_video);
-                                    item.file_path = new_video.to_string_lossy().to_string();
+                                    if let Some(file_name) = old_video.file_name() {
+                                        let new_video = storage_dir.join(file_name);
+                                        let _ = std::fs::copy(&old_video, &new_video);
+                                        item.file_path = new_video.to_string_lossy().to_string();
+                                    }
                                 }
                                 let old_thumb = PathBuf::from(&item.thumbnail_path);
                                 if old_thumb.exists() {
-                                    let new_thumb = storage_dir.join("thumbnails").join(old_thumb.file_name().unwrap());
-                                    let _ = std::fs::copy(&old_thumb, &new_thumb);
-                                    item.thumbnail_path = new_thumb.to_string_lossy().to_string();
+                                    if let Some(file_name) = old_thumb.file_name() {
+                                        let new_thumb = storage_dir.join("thumbnails").join(file_name);
+                                        let _ = std::fs::copy(&old_thumb, &new_thumb);
+                                        item.thumbnail_path = new_thumb.to_string_lossy().to_string();
+                                    }
                                 }
                             }
                             let _ = std::fs::write(&library_path, serde_json::to_string_pretty(&items).unwrap_or_default());

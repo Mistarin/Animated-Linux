@@ -92,6 +92,12 @@ pub struct ScreenInfo {
     pub current_wallpaper: Option<String>,
     #[serde(default)]
     pub is_main: bool,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+}
+
+fn default_scale() -> f64 {
+    1.0
 }
 
 pub trait WallpaperBackend: Send + Sync {

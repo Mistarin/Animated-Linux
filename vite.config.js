@@ -10,9 +10,10 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
+    outDir: "dist_ui",
     target: ["es2021", "chrome105", "safari13"],
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
-    emptyOutDir: false,
+    emptyOutDir: true,
   },
 });

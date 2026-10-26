@@ -36,6 +36,52 @@ pub fn encode_thumbnail_base64(path: &Path) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u32)]
+pub enum FillMode {
+    Stretch = 0,
+    Fit = 1,
+    Crop = 2,
+    Center = 3,
+}
+
+impl From<u32> for FillMode {
+    fn from(val: u32) -> Self {
+        match val {
+            0 => Self::Stretch,
+            1 => Self::Fit,
+            2 => Self::Crop,
+            3 => Self::Center,
+            _ => Self::Crop,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u32)]
+pub enum PausePolicy {
+    AlwaysPlay = 0,
+    FullscreenGameOrApp = 1,
+    MaximizedWindow = 2,
+    AnyWindowFocused = 3,
+    BatteryPower = 4,
+}
+
+impl From<u32> for PausePolicy {
+    fn from(val: u32) -> Self {
+        match val {
+            0 => Self::AlwaysPlay,
+            1 => Self::FullscreenGameOrApp,
+            2 => Self::MaximizedWindow,
+            3 => Self::AnyWindowFocused,
+            4 => Self::BatteryPower,
+            _ => Self::FullscreenGameOrApp,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PlaybackSettings {
@@ -66,8 +112,8 @@ impl Default for PlaybackSettings {
             is_muted: true,
             speed: 1.0,
             is_paused: false,
-            pause_on_fullscreen: true,
-            pause_policy: 1,
+            pause_on_fullscreen: false,
+            pause_policy: 0,
             fill_mode: 2,
             pan_x: 0.0,
             pan_y: 0.0,

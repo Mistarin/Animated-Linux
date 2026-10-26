@@ -13,7 +13,7 @@ let currentFps = 30;
 let currentFillMode = 2; // 0: Stretch, 1: Fit, 2: Crop/Zoom, 3: Center
 let currentPanX = 0.0;
 let currentPanY = 0.0;
-let currentPausePolicy = 1; // 0: Never, 1: Fullscreen Game/App, 2: Maximized Window, 3: Any Window, 4: Battery
+let currentPausePolicy = 0; // 0: Never, 1: Fullscreen Game/App, 2: Maximized Window, 3: Any Window, 4: Battery
 let currentPauseDetection = 'individual'; // 'individual' | 'main' | 'all'
 let currentMainDisplayId = 0;
 let displays = [];
@@ -179,9 +179,12 @@ function showToast(message, type = 'info') {
   }, 3200);
 }
 
+const DEFAULT_THUMB_SVG =
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180" fill="%23131316"><rect width="320" height="180" fill="%23131316"/><rect x="100" y="50" width="120" height="80" rx="8" fill="%23222228" stroke="%2333333d" stroke-width="2"/><polygon points="152,78 152,102 174,90" fill="%2371717a"/></svg>';
+
 // Helper to convert or extract thumbnail URL (prioritizes base64 data for WebKitGTK)
 function getThumbnail(wp) {
-  if (!wp) return '/src-tauri/icons/icon.png';
+  if (!wp) return DEFAULT_THUMB_SVG;
   if (wp.thumbnail_data && wp.thumbnail_data.length > 0) {
     return wp.thumbnail_data;
   }
@@ -195,7 +198,7 @@ function getThumbnail(wp) {
     }
     return convertFileSrc(wp.thumbnail_path);
   }
-  return '/src-tauri/icons/icon.png';
+  return DEFAULT_THUMB_SVG;
 }
 
 // Populate Static Icons
@@ -272,6 +275,12 @@ function setupTabs() {
           tabContents[tab].classList.add('hidden');
         }
       });
+
+      if (targetTab === 'displays') {
+        refreshDisplays();
+      } else if (targetTab === 'settings') {
+        refreshCacheStats();
+      }
     });
   });
 }
@@ -355,7 +364,7 @@ function renderDisplays() {
     selectMainDisplayTop.innerHTML = displays
       .map(
         (d) =>
-          `<option value="${d.id}" ${d.id === currentMainDisplayId ? 'selected' : ''}>${d.name} (${d.resolution}) ${d.id === currentMainDisplayId ? '★ Main' : ''}</option>`
+          `<option value="${d.id}" ${d.id === currentMainDisplayId ? 'selected' : ''}>${d.name} (${d.resolution}) ${d.id === currentMainDisplayId ? '(Main)' : ''}</option>`
       )
       .join('');
   }
@@ -370,7 +379,7 @@ function renderDisplays() {
         <div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-weight: 500; font-size: 0.95rem; color: var(--text-main);">${d.name}</span>
-            ${isMain ? `<span class="badge-main-display">★ Main Display Source</span>` : ''}
+            ${isMain ? `<span class="badge-main-display">Main Display Source</span>` : ''}
           </div>
           <div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 3px;">
             Resolution: ${d.resolution} • ID: ${d.id} ${isMain ? '• Active window detection source' : ''}
@@ -384,7 +393,7 @@ function renderDisplays() {
           </button>
         ` : `
           <button class="btn btn-secondary btn-set-main" disabled style="opacity: 0.65; cursor: default;">
-            ✓ Main Source
+            Main Source
           </button>
         `}
         <button class="btn btn-primary" onclick="window.applyToDisplay(${d.id})">
@@ -524,7 +533,7 @@ function renderLibrary() {
         return `
         <div class="card" id="wp-card-${wp.id}">
           <div class="card-thumbnail-wrapper is-installing" id="thumb-wrapper-${wp.id}">
-            <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" />
+            <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" onerror="this.onerror=null; this.src='${DEFAULT_THUMB_SVG}'" />
             <span class="badge-installing">Importing</span>
             <div class="loading-bar-wrapper">
               <div class="loading-bar-line"></div>
@@ -554,7 +563,15 @@ function renderLibrary() {
            ondblclick="window.onApplyWallpaper('${wp.id}')" 
            title="Double-click to apply wallpaper">
         <div class="card-thumbnail-wrapper" id="thumb-wrapper-${wp.id}">
-          <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" />
+          <img src="${thumbSrc}" class="card-thumb" id="thumb-img-${wp.id}" alt="${wp.title}" onerror="this.onerror=null; this.src='${DEFAULT_THUMB_SVG}'" />
+          <video class="card-video-preview" 
+                 id="video-preview-${wp.id}" 
+                 data-src="${convertFileSrc(wp.file_path)}" 
+                 muted 
+                 loop 
+                 playsinline 
+                 preload="none" 
+                 onerror="this.style.display='none'"></video>
           ${isActive ? `<span class="badge-active">${isPlaying ? 'Playing' : 'Paused'}</span>` : ''}
           <span class="badge-res">${wp.resolution || 'HD'}</span>
         </div>
@@ -587,6 +604,30 @@ function renderLibrary() {
     `;
     })
     .join('');
+
+  // Interactive hover video previews
+  libraryGrid.querySelectorAll('.card').forEach((card) => {
+    const video = card.querySelector('.card-video-preview');
+    if (!video) return;
+
+    card.addEventListener('mouseenter', () => {
+      if (!video.src && video.dataset.src) {
+        video.src = video.dataset.src;
+        video.load();
+      }
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    });
+
+    card.addEventListener('mouseleave', () => {
+      if (video.src) {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+  });
 }
 
 // Double-Click Inline Rename
@@ -1096,16 +1137,6 @@ function setupPerformanceControls() {
       if (btnCancelCaching) btnCancelCaching.disabled = false;
     }
 
-    let pollTimer = null;
-    pollTimer = setInterval(async () => {
-      try {
-        const prog = await invoke('get_caching_progress');
-        if (prog) {
-          updateCachingProgressUI(prog);
-        }
-      } catch (_) {}
-    }, 200);
-
     try {
       const res = await invoke('compress_all_wallpapers', {
         qualityLevel: currentQuality,
@@ -1132,7 +1163,6 @@ function setupPerformanceControls() {
     } catch (err) {
       showToast('Batch caching error: ' + err, 'error');
     } finally {
-      if (pollTimer) clearInterval(pollTimer);
       if (cachingProgressBar) cachingProgressBar.style.width = '100%';
       if (cachingProgressCount) cachingProgressCount.textContent = `${uncachedCount} / ${uncachedCount}`;
       if (cachingProgressDetail) cachingProgressDetail.textContent = 'Batch optimization complete.';
@@ -1178,6 +1208,29 @@ function setupPerformanceControls() {
       }
     }
     checkVariantCacheState();
+  });
+
+  // System Tray Synchronization Events
+  listen('wallpaper-playback-changed', (event) => {
+    const payload = event.payload;
+    if (!payload) return;
+    isPlaying = !payload.is_paused;
+    btnTogglePlay.innerHTML = isPlaying ? Icons.pause : Icons.play;
+    if (activeWallpaper) {
+      updateActivePlayerBadge(activeWallpaper);
+    }
+    renderLibrary();
+  });
+
+  listen('wallpaper-stopped', () => {
+    activeWallpaper = null;
+    isPlaying = false;
+    nowPlayingTitle.textContent = 'No Wallpaper Active';
+    nowPlayingSub.textContent = 'Desktop restored to default static wallpaper';
+    btnTogglePlay.innerHTML = Icons.play;
+    updateActivePlayerBadge(null);
+    checkVariantCacheState();
+    renderLibrary();
   });
 }
 
@@ -1296,7 +1349,7 @@ async function loadPerformanceSettings() {
     currentFillMode = s.fill_mode !== undefined ? s.fill_mode : 2;
     currentPanX = s.pan_x !== undefined ? s.pan_x : 0.0;
     currentPanY = s.pan_y !== undefined ? s.pan_y : 0.0;
-    currentPausePolicy = s.pause_policy !== undefined ? s.pause_policy : 1;
+    currentPausePolicy = s.pause_policy !== undefined ? s.pause_policy : 0;
     currentSpeed = s.speed !== undefined ? s.speed : 1.0;
 
     sliderQuality.value = currentQuality;
@@ -1392,7 +1445,7 @@ function setupImportAndDrop() {
     const tempItem = {
       id: 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       title: filename,
-      thumbnail_data: '/src-tauri/icons/icon.png',
+      thumbnail_data: DEFAULT_THUMB_SVG,
       format: p.split('.').pop() || 'mp4',
       duration_secs: 0,
       resolution: 'Importing...',
@@ -2134,7 +2187,7 @@ async function setupBackendControls() {
   };
 
   const updateBackendLabel = (backend) => {
-    const info = backendInfo[backend] || backendInfo['kde_mpv'];
+    const info = backendInfo[backend] || backendInfo['kde'];
     if (labelActiveBackend) {
       labelActiveBackend.textContent = info.title;
       labelActiveBackend.style.color = info.color;
@@ -2158,7 +2211,7 @@ async function setupBackendControls() {
       showToast('Switching wallpaper engine backend...', 'info');
       await invoke('set_wallpaper_backend', { backend: selected });
       updateBackendLabel(selected);
-      const info = backendInfo[selected] || backendInfo['kde_mpv'];
+      const info = backendInfo[selected] || backendInfo['kde'];
       showToast(`Wallpaper engine switched to ${info.title}`, 'success');
     } catch (err) {
       showToast(`Failed to switch engine: ${err}`, 'error');

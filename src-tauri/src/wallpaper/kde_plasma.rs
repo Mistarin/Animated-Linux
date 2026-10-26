@@ -65,10 +65,12 @@ impl WallpaperBackend for KdePlasmaBackend {
         let fill_mode = settings.fill_mode;
         let pause_mode = match settings.pause_policy {
             0 => 3, // 3: Never pause in reborn
-            1 | 2 => 0, // 0: Maximized or full-screen
-            3 => 1, // 1: When a visible window is active
+            1 => 3, // 1: Fullscreen Game/App: Reborn combines maximized and fullscreen in mode 0, so using 3 prevents freezing on normal maximized windows
+            2 => 0, // 2: Maximized Window Active: Pauses on maximized or fullscreen windows
+            3 => 1, // 3: Any Window Active: When a visible window is active
             _ => 3,
         };
+        let check_active_screen = settings.pause_detection_mode == "individual";
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
@@ -86,6 +88,26 @@ impl WallpaperBackend for KdePlasmaBackend {
 
         let video_url_json = serde_json::to_string(&video_url)
             .unwrap_or_else(|_| format!("\"{}\"", video_url));
+
+        // Pre-kickstart PauseMode transition to ensure onPlayingChanged fires and triggers main.play()
+        let kickstart_script = format!(
+            r#"
+var allDesktops = desktops();
+var target = {target_screen};
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    if (target === -1 || d.screen === target) {{
+        d.wallpaperPlugin = "luisbocanegra.smart.video.wallpaper.reborn";
+        d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+        d.writeConfig("PauseMode", 99);
+        d.reloadConfig();
+    }}
+}}
+"#,
+            target_screen = target_screen
+        );
+        let _ = Self::run_plasma_script(&kickstart_script);
+        std::thread::sleep(std::time::Duration::from_millis(30));
 
         let script = format!(
             r#"
@@ -105,6 +127,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("LastVideoPosition", 0);
         d.writeConfig("PlaybackRate", {speed_val});
         d.writeConfig("FillMode", {fill_mode});
+        d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
         d.writeConfig("PauseMode", {pause_mode});
         d.writeConfig("MuteMode", {mute_mode});
         d.writeConfig("Volume", {volume_val});
@@ -118,6 +141,7 @@ print("Applied successfully to target " + target);
             video_config_json = video_config_json,
             speed_val = speed_val,
             fill_mode = fill_mode,
+            check_active_screen = check_active_screen,
             pause_mode = pause_mode,
             mute_mode = mute_mode,
             volume_val = volume_val
@@ -127,61 +151,37 @@ print("Applied successfully to target " + target);
         Ok(())
     }
 
-    fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
+    fn pause(&self, screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
-        if settings.inactive_black_screen {
-            let script = format!(
-                r##"
-var allDesktops = desktops();
-var target = {target_screen};
-for (var i = 0; i < allDesktops.length; i++) {{
-    var d = allDesktops[i];
-    if (target === -1 || d.screen === target) {{
-        d.wallpaperPlugin = "org.kde.color";
-        d.currentConfigGroup = Array("Wallpaper", "org.kde.color", "General");
-        d.writeConfig("Color", "#000000");
-        d.reloadConfig();
-    }}
-}}
-"##,
-                target_screen = target_screen
-            );
-            Self::run_plasma_script(&script)?;
-        } else {
-            let script = format!(
-                r#"
+        let script = format!(
+            r#"
 var allDesktops = desktops();
 var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
-        d.writeConfig("PauseMode", 1);
+        d.writeConfig("PauseMode", 99);
         d.reloadConfig();
     }}
 }}
 "#,
-                target_screen = target_screen
-            );
-            Self::run_plasma_script(&script)?;
-        }
+            target_screen = target_screen
+        );
+        Self::run_plasma_script(&script)?;
         Ok(())
     }
 
-    fn resume(&self, screen: Option<i32>, settings: &PlaybackSettings, wallpaper: Option<&WallpaperItem>) -> Result<(), String> {
+    fn resume(&self, screen: Option<i32>, settings: &PlaybackSettings, _wallpaper: Option<&WallpaperItem>) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
         let pause_mode = match settings.pause_policy {
             0 => 3,
-            1 | 2 => 0,
+            1 => 3,
+            2 => 0,
             3 => 1,
             _ => 3,
         };
-
-        if settings.inactive_black_screen {
-            if let Some(wp) = wallpaper {
-                return self.apply(wp, screen, settings);
-            }
-        }
+        let check_active_screen = settings.pause_detection_mode == "individual";
 
         let restart_script = if settings.restart_on_resume {
             r#"
@@ -192,6 +192,25 @@ for (var i = 0; i < allDesktops.length; i++) {{
             ""
         };
 
+        // Pre-kickstart PauseMode to ensure onPlayingChanged fires and triggers main.play()
+        let kickstart_script = format!(
+            r#"
+var allDesktops = desktops();
+var target = {target_screen};
+for (var i = 0; i < allDesktops.length; i++) {{
+    var d = allDesktops[i];
+    if (target === -1 || d.screen === target) {{
+        d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+        d.writeConfig("PauseMode", 99);
+        d.reloadConfig();
+    }}
+}}
+"#,
+            target_screen = target_screen
+        );
+        let _ = Self::run_plasma_script(&kickstart_script);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -200,13 +219,15 @@ for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
-{restart_script}        d.writeConfig("PauseMode", {pause_mode});
+{restart_script}        d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
+        d.writeConfig("PauseMode", {pause_mode});
         d.reloadConfig();
     }}
 }}
 "#,
             target_screen = target_screen,
             restart_script = restart_script,
+            check_active_screen = check_active_screen,
             pause_mode = pause_mode
         );
         Self::run_plasma_script(&script)?;
@@ -278,6 +299,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
 
     fn stop(&self, screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let fallback_img = crate::wallpaper::WallpaperManager::find_default_system_wallpaper();
+        let fallback_json = serde_json::to_string(&fallback_img).unwrap_or_else(|_| format!("\"{}\"", fallback_img));
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -285,13 +308,19 @@ var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
-        d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
-        d.writeConfig("VideoUrls", "[]");
+        d.wallpaperPlugin = "org.kde.image";
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        var existingImg = d.readConfig("Image");
+        if (!existingImg || existingImg.length === 0) {{
+            d.writeConfig("Image", {fallback_json});
+        }}
+        d.writeConfig("FillMode", 2);
         d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            fallback_json = fallback_json
         );
         Self::run_plasma_script(&script)?;
         Ok(())

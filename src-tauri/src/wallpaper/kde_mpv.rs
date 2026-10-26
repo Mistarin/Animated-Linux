@@ -121,6 +121,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("Volume", {volume});
         d.writeConfig("Speed", {speed});
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("MpvHwdec", "auto-safe");
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("UserPaused", {is_paused});
         d.reloadConfig();
@@ -310,6 +311,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
 
     fn stop(&self, screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let fallback_img = crate::wallpaper::WallpaperManager::find_default_system_wallpaper();
+        let fallback_json = serde_json::to_string(&fallback_img).unwrap_or_else(|_| format!("\"{}\"", fallback_img));
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -317,16 +320,19 @@ var target = {target_screen};
 for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
-        if (d.wallpaperPlugin === "com.github.catsout.wallpaperEngineKde") {{
-            d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
-            d.writeConfig("WallpaperSource", "");
-            d.writeConfig("UserPaused", true);
-            d.reloadConfig();
+        d.wallpaperPlugin = "org.kde.image";
+        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+        var existingImg = d.readConfig("Image");
+        if (!existingImg || existingImg.length === 0) {{
+            d.writeConfig("Image", {fallback_json});
         }}
+        d.writeConfig("FillMode", 2);
+        d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            fallback_json = fallback_json
         );
         Self::run_plasma_script(&script)?;
         Ok(())

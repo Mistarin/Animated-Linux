@@ -6,8 +6,6 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
-const MPV_SOCKET: &str = "/tmp/aetherpaper-mpv.sock";
-
 pub struct MpvBackend {
     process: Mutex<Option<Child>>,
 }
@@ -17,6 +15,14 @@ impl MpvBackend {
         Self {
             process: Mutex::new(None),
         }
+    }
+
+    pub fn get_socket_path() -> PathBuf {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            return PathBuf::from(runtime_dir).join("animated-linux-mpv.sock");
+        }
+        let user = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+        PathBuf::from(format!("/tmp/animated-linux-mpv-{}.sock", user))
     }
 
     pub fn find_mpvpaper_bin() -> Option<PathBuf> {
@@ -61,8 +67,10 @@ impl MpvBackend {
     }
 
     fn send_ipc_command(command: &str) -> Result<(), String> {
-        let mut stream = UnixStream::connect(MPV_SOCKET)
-            .map_err(|e| format!("Could not connect to mpv socket: {}", e))?;
+        let socket_path = Self::get_socket_path();
+        let mut stream = UnixStream::connect(&socket_path)
+            .map_err(|e| format!("Could not connect to mpv socket ({}): {}", socket_path.display(), e))?;
+        let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(500)));
         stream.write_all(format!("{}\n", command).as_bytes())
             .map_err(|e| format!("Failed to write to mpv socket: {}", e))?;
         Ok(())
@@ -88,13 +96,14 @@ impl WallpaperBackend for MpvBackend {
             let _ = child.wait();
         }
 
-        let _ = std::fs::remove_file(MPV_SOCKET);
+        let socket_path = Self::get_socket_path();
+        let socket_str = socket_path.to_string_lossy().to_string();
+        let _ = std::fs::remove_file(&socket_path);
 
         let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
         let mpvpaper_bin = Self::find_mpvpaper_bin();
 
-        let child = if is_wayland && mpvpaper_bin.is_some() {
-            let bin = mpvpaper_bin.unwrap();
+        let child = if let (true, Some(bin)) = (is_wayland, mpvpaper_bin) {
             let mut cmd = new_host_command(bin);
 
             // Layer: background places the wallpaper in the native Wayland desktop background layer
@@ -129,7 +138,7 @@ impl WallpaperBackend for MpvBackend {
             mpv_opts.push("demuxer-max-bytes=50M".to_string());
             mpv_opts.push("cache=yes".to_string());
 
-            mpv_opts.push(format!("input-ipc-server={}", MPV_SOCKET));
+            mpv_opts.push(format!("input-ipc-server={}", socket_str));
             if settings.is_muted {
                 mpv_opts.push("audio=no".to_string());
             } else {
@@ -247,7 +256,7 @@ impl WallpaperBackend for MpvBackend {
                 .arg("--demuxer-max-bytes=50M")
                 .arg("--cache=yes")
                 .arg(format!("--speed={}", speed_str))
-                .arg(format!("--input-ipc-server={}", MPV_SOCKET))
+                .arg(format!("--input-ipc-server={}", socket_str))
                 .arg("--wid=0");
 
             if settings.is_muted {
@@ -355,14 +364,16 @@ impl WallpaperBackend for MpvBackend {
     }
 
     fn set_geometry(&self, fill_mode: u32, pan_x: f32, pan_y: f32) -> Result<(), String> {
-        let (keepaspect, panscan) = match fill_mode {
-            0 => ("false", "0.0"),
-            1 => ("true", "0.0"),
-            2 => ("true", "1.0"),
-            _ => ("true", "0.0"),
+        let (keepaspect, panscan, unscaled) = match fill_mode {
+            0 => ("false", "0.0", "no"),
+            1 => ("true", "0.0", "no"),
+            2 => ("true", "1.0", "no"),
+            3 => ("true", "0.0", "yes"),
+            _ => ("true", "0.0", "no"),
         };
         let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "keepaspect", {}]}}"#, keepaspect));
         let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "panscan", {}]}}"#, panscan));
+        let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "video-unscaled", "{}"]}}"#, unscaled));
         let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "video-pan-x", {}]}}"#, pan_x));
         let _ = Self::send_ipc_command(&format!(r#"{{"command": ["set_property", "video-pan-y", {}]}}"#, pan_y));
         Ok(())
@@ -374,7 +385,19 @@ impl WallpaperBackend for MpvBackend {
             let _ = child.kill();
             let _ = child.wait();
         }
-        let _ = std::fs::remove_file(MPV_SOCKET);
+        let _ = std::fs::remove_file(Self::get_socket_path());
         Ok(())
+    }
+}
+
+impl Drop for MpvBackend {
+    fn drop(&mut self) {
+        if let Ok(mut lock) = self.process.lock() {
+            if let Some(mut child) = lock.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+        let _ = std::fs::remove_file(Self::get_socket_path());
     }
 }

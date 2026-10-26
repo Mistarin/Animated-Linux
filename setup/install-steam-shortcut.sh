@@ -55,5 +55,5 @@ for u in user_dirs:
     print(f"[OK] Installed artwork to {grid_dir}")
 
 print(f"\n[OK] Successfully registered {app_name} with Shortcut ID: {shortcut_id}")
-print("Please restart Steam to see AetherPaper in your library!")
+print("Please restart Steam to see Animated Linux in your library!")
 EOF

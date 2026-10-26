@@ -38,10 +38,38 @@ pub fn resolve_app_storage_dir() -> PathBuf {
         }
     }
 
-    let default_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("aetherpaper")
-        .join("wallpapers");
+    let local_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    let default_dir = local_dir.join("animated-linux").join("wallpapers");
+    let legacy_dir = local_dir.join("aetherpaper").join("wallpapers");
+
+    if !default_dir.exists() && legacy_dir.exists() {
+        let _ = std::fs::create_dir_all(&default_dir);
+        let _ = std::fs::create_dir_all(default_dir.join("thumbnails"));
+        if let Ok(entries) = std::fs::read_dir(&legacy_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    if let Some(name) = p.file_name() {
+                        let _ = std::fs::copy(&p, default_dir.join(name));
+                    }
+                }
+            }
+        }
+        let legacy_thumbs = legacy_dir.join("thumbnails");
+        if legacy_thumbs.exists() {
+            if let Ok(entries) = std::fs::read_dir(&legacy_thumbs) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(name) = p.file_name() {
+                            let _ = std::fs::copy(&p, default_dir.join("thumbnails").join(name));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let _ = std::fs::create_dir_all(&default_dir);
     let _ = std::fs::create_dir_all(default_dir.join("thumbnails"));
     default_dir
@@ -146,7 +174,7 @@ impl WallpaperManager {
                 "kde".to_string()
             }
         } else {
-            "kde_mpv".to_string()
+            "kde".to_string()
         };
 
         let initial_settings = if settings_path.exists() {
@@ -343,23 +371,25 @@ print(JSON.stringify(results));
     pub fn apply_wallpaper(&self, wallpaper: WallpaperItem, screen: Option<i32>) -> Result<(), String> {
         self.ensure_previous_wallpaper_cached();
 
-        let settings = self.current_settings.lock().unwrap().clone();
+        let mut settings = self.current_settings.lock().unwrap();
+        settings.is_paused = false;
+        let settings_clone = settings.clone();
+        drop(settings);
+        self.save_settings(&settings_clone);
+
         let backend = self.get_active_backend();
         println!("[AnimatedLinux] Applying wallpaper via {}", backend.name());
 
         // Auto-select preferred cached variant (e.g. Q1-Q4) if available
         let mut effective_wp = wallpaper;
-        if settings.quality_level < 5 {
-            let variant_file = self.storage_dir.join(format!("{}_q{}.mp4", effective_wp.id, settings.quality_level));
+        if settings_clone.quality_level < 5 {
+            let variant_file = self.storage_dir.join(format!("{}_q{}.mp4", effective_wp.id, settings_clone.quality_level));
             if variant_file.exists() {
                 effective_wp.file_path = variant_file.to_string_lossy().to_string();
             }
         }
 
-        backend.apply(&effective_wp, screen, &settings)?;
-        if settings.is_paused {
-            let _ = backend.pause(screen, &settings);
-        }
+        backend.apply(&effective_wp, screen, &settings_clone)?;
         let mut save_item = effective_wp.clone();
         save_item.thumbnail_data = None;
         let _ = std::fs::write(self.storage_dir.join("active.json"), serde_json::to_string(&save_item).unwrap_or_default());
@@ -569,10 +599,19 @@ for (var i = 0; i < allDesktops.length; i++) {
         } else {
             // Check fallback in default user data directory
             let alt_path = dirs::data_local_dir()
+                .map(|p| p.join("animated-linux").join("wallpapers").join("previous_wallpaper.json"))
+                .unwrap_or_else(|| PathBuf::from("."));
+            let legacy_path = dirs::data_local_dir()
                 .map(|p| p.join("aetherpaper").join("wallpapers").join("previous_wallpaper.json"))
                 .unwrap_or_else(|| PathBuf::from("."));
+
             if alt_path.exists() {
                 std::fs::read_to_string(&alt_path)
+                    .ok()
+                    .and_then(|c| serde_json::from_str::<Vec<DesktopWallpaperBackup>>(&c).ok())
+                    .unwrap_or_default()
+            } else if legacy_path.exists() {
+                std::fs::read_to_string(&legacy_path)
                     .ok()
                     .and_then(|c| serde_json::from_str::<Vec<DesktopWallpaperBackup>>(&c).ok())
                     .unwrap_or_default()
@@ -661,8 +700,6 @@ for (var i = 0; i < allDesktops.length; i++) {{
     pub fn cleanup_on_quit(&self) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let _ = self.mpv_backend.stop(None, &settings);
-        let _ = self.plasma_mpv_backend.stop(None, &settings);
-        let _ = self.plasma_backend.stop(None, &settings);
         let _ = self.restore_previous_wallpaper();
 
         // Preserve active wallpaper state in active.json so that upon next app launch
@@ -680,8 +717,6 @@ for (var i = 0; i < allDesktops.length; i++) {{
     pub fn stop(&self) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let _ = self.mpv_backend.stop(None, &settings);
-        let _ = self.plasma_mpv_backend.stop(None, &settings);
-        let _ = self.plasma_backend.stop(None, &settings);
         let _ = self.restore_previous_wallpaper();
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
@@ -691,8 +726,6 @@ for (var i = 0; i < allDesktops.length; i++) {{
     pub fn reset_desktop(&self) -> Result<(), String> {
         let settings = self.current_settings.lock().unwrap().clone();
         let _ = self.mpv_backend.stop(None, &settings);
-        let _ = self.plasma_mpv_backend.stop(None, &settings);
-        let _ = self.plasma_backend.stop(None, &settings);
         let _ = self.restore_previous_wallpaper();
         let _ = std::fs::remove_file(self.storage_dir.join("active.json"));
         *self.active_wallpaper.lock().unwrap() = None;
@@ -704,9 +737,6 @@ for (var i = 0; i < allDesktops.length; i++) {{
         if let Ok(content) = std::fs::read_to_string(&self.library_path) {
             if let Ok(mut items) = serde_json::from_str::<Vec<WallpaperItem>>(&content) {
                 for it in &mut items {
-                    if it.thumbnail_data.is_none() {
-                        it.thumbnail_data = backend::encode_thumbnail_base64(Path::new(&it.thumbnail_path));
-                    }
                     // Scan and detect cached variants
                     let mut cached = Vec::new();
                     cached.push(5); // Q5 is original source
@@ -725,6 +755,102 @@ for (var i = 0; i < allDesktops.length; i++) {{
             }
         }
         Vec::new()
+    }
+
+    pub fn load_library_with_thumbnails(&self) -> Vec<WallpaperItem> {
+        let mut items = self.load_library();
+        let mut library_dirty = false;
+        let thumbs_dir = self.storage_dir.join("thumbnails");
+        let _ = std::fs::create_dir_all(&thumbs_dir);
+
+        for it in &mut items {
+            let mut thumb_path = PathBuf::from(&it.thumbnail_path);
+            if !thumb_path.exists() {
+                let candidate = thumbs_dir.join(format!("{}.jpg", it.id));
+                if candidate.exists() {
+                    it.thumbnail_path = candidate.to_string_lossy().to_string();
+                    thumb_path = candidate;
+                    library_dirty = true;
+                }
+            }
+
+            // If thumbnail is still missing on disk, attempt automatic generation from video
+            if !thumb_path.exists() {
+                let video_path = PathBuf::from(&it.file_path);
+                let actual_video = if video_path.exists() {
+                    Some(video_path)
+                } else {
+                    let fallback_video = self.storage_dir.join(format!("{}.{}", it.id, it.format));
+                    let q3_video = self.storage_dir.join(format!("{}_q3.{}", it.id, it.format));
+                    if fallback_video.exists() {
+                        Some(fallback_video)
+                    } else if q3_video.exists() {
+                        Some(q3_video)
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(vid) = actual_video {
+                    let gen_target = thumbs_dir.join(format!("{}.jpg", it.id));
+                    let mut cmd = new_host_command("ffmpeg");
+                    cmd.arg("-y")
+                        .arg("-ss").arg("00:00:01")
+                        .arg("-i").arg(&vid)
+                        .arg("-vf").arg("scale=480:-2")
+                        .arg("-vframes").arg("1")
+                        .arg("-q:v").arg("2")
+                        .arg(&gen_target);
+                    let ok = cmd.status().map(|s| s.success()).unwrap_or(false);
+                    if !ok || !gen_target.exists() || std::fs::metadata(&gen_target).map(|m| m.len()).unwrap_or(0) == 0 {
+                        let mut fallback_cmd = new_host_command("ffmpeg");
+                        fallback_cmd.arg("-y")
+                            .arg("-ss").arg("00:00:00")
+                            .arg("-i").arg(&vid)
+                            .arg("-vf").arg("scale=480:-2")
+                            .arg("-vframes").arg("1")
+                            .arg("-q:v").arg("2")
+                            .arg(&gen_target);
+                        let _ = fallback_cmd.status();
+                    }
+                    if gen_target.exists() && std::fs::metadata(&gen_target).map(|m| m.len()).unwrap_or(0) > 0 {
+                        it.thumbnail_path = gen_target.to_string_lossy().to_string();
+                        thumb_path = gen_target;
+                        library_dirty = true;
+                    }
+                }
+            }
+
+            // Downscale oversized thumbnails (> 350KB) to lightweight previews
+            if thumb_path.exists() {
+                if let Ok(meta) = std::fs::metadata(&thumb_path) {
+                    if meta.len() > 350_000 {
+                        let tmp_target = thumbs_dir.join(format!("{}_tmp.jpg", it.id));
+                        let mut comp_cmd = new_host_command("ffmpeg");
+                        comp_cmd.arg("-y")
+                            .arg("-i").arg(&thumb_path)
+                            .arg("-vf").arg("scale=480:-2")
+                            .arg("-q:v").arg("2")
+                            .arg(&tmp_target);
+                        if comp_cmd.status().map(|s| s.success()).unwrap_or(false) && tmp_target.exists() {
+                            let _ = std::fs::rename(&tmp_target, &thumb_path);
+                        } else {
+                            let _ = std::fs::remove_file(&tmp_target);
+                        }
+                    }
+                }
+            }
+
+            if it.thumbnail_data.is_none() {
+                it.thumbnail_data = backend::encode_thumbnail_base64(&thumb_path);
+            }
+        }
+
+        if library_dirty {
+            let _ = self.save_library(&items);
+        }
+
+        items
     }
 
     pub fn save_library(&self, items: &[WallpaperItem]) -> Result<(), String> {

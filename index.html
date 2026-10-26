@@ -14,7 +14,7 @@
     <!-- Top Header -->
     <header class="header" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>
-        <img src="/src-tauri/icons/32x32.png" alt="Animated Linux Logo" class="brand-icon" id="brand-icon" data-tauri-drag-region />
+        <img src="/icons/32x32.png" alt="Animated Linux Logo" class="brand-icon" id="brand-icon" data-tauri-drag-region />
         <span class="brand-title" data-tauri-drag-region>Animated Linux</span>
         <span class="brand-badge" data-tauri-drag-region>Git Edition</span>
       </div>
@@ -154,12 +154,12 @@
 
               <div>
                 <select id="setting-backend" style="width: 100%;">
-                  <option value="kde_mpv">KDE Plasma 6 (MPV Native - Desktop icons visible)</option>
                   <option value="kde">KDE Plasma 6 (QtMultimedia - Desktop icons visible)</option>
+                  <option value="kde_mpv">KDE Plasma 6 (MPV Native - Desktop icons visible)</option>
                   <option value="mpv">Standalone MPV Engine (mpvpaper - Wayland layer surface)</option>
                 </select>
                 <p id="desc-backend-mode" style="color: var(--text-muted); font-size: 0.75rem; margin-top: 8px; line-height: 1.45;">
-                  KDE Plasma MPV embeds libmpv directly inside PlasmaShell underneath desktop icons with full hardware acceleration.
+                  KDE Native QtMultimedia uses FFmpeg VA-API decoding inside PlasmaShell directly beneath desktop icons.
                 </p>
               </div>
             </div>
@@ -231,10 +231,10 @@
                     <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Monitors focused Wayland surfaces and active window states</div>
                   </div>
                   <select id="setting-pause-policy" style="min-width: 170px;">
-                    <option value="1" selected>Fullscreen Game / App</option>
+                    <option value="0" selected>Never Pause (Always Play)</option>
+                    <option value="1">Fullscreen Game / App</option>
                     <option value="2">Maximized Window Active</option>
                     <option value="3">Any Window Active / Covered</option>
-                    <option value="0">Never Pause (Always Play)</option>
                     <option value="4">Battery Power (Laptops)</option>
                   </select>
                 </div>
@@ -461,7 +461,7 @@
       <!-- Left: Active Wallpaper Card & Import Video Button -->
       <div class="player-left">
         <div class="player-info clickable" id="player-info-jump" title="Click to reveal active wallpaper in library" style="cursor: pointer;">
-          <img src="/src-tauri/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
+          <img src="/icons/128x128.png" id="now-playing-thumb" class="player-thumb" alt="Active Wallpaper" />
           <div class="player-title-wrap">
             <div class="player-title" id="now-playing-title">No Wallpaper Active</div>
             <div class="player-sub" id="now-playing-sub">Select a wallpaper to play</div>

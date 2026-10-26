@@ -81,7 +81,7 @@ pub struct AppState {
 
 #[tauri::command]
 fn get_wallpapers(state: State<'_, AppState>) -> Vec<WallpaperItem> {
-    state.wallpaper_mgr.load_library()
+    state.wallpaper_mgr.load_library_with_thumbnails()
 }
 
 fn import_single_file_to_storage(wp_mgr: &WallpaperManager, source_path: &str) -> Result<WallpaperItem, String> {
@@ -105,15 +105,29 @@ fn import_single_file_to_storage(wp_mgr: &WallpaperManager, source_path: &str) -
     // Copy video file
     std::fs::copy(src, &dest_video).map_err(|e| format!("Failed to copy video: {}", e))?;
 
-    // Extract thumbnail using ffmpeg with host environment
-    let _ = new_host_command("ffmpeg")
+    // Extract lightweight thumbnail using ffmpeg with host environment
+    let mut thumb_cmd = new_host_command("ffmpeg");
+    thumb_cmd
         .arg("-y")
         .arg("-ss").arg("00:00:01")
         .arg("-i").arg(&dest_video)
+        .arg("-vf").arg("scale=480:-2")
         .arg("-vframes").arg("1")
         .arg("-q:v").arg("2")
-        .arg(&dest_thumb)
-        .output();
+        .arg(&dest_thumb);
+    let ok = thumb_cmd.status().map(|s| s.success()).unwrap_or(false);
+    if !ok || !dest_thumb.exists() || std::fs::metadata(&dest_thumb).map(|m| m.len()).unwrap_or(0) == 0 {
+        let mut fallback_cmd = new_host_command("ffmpeg");
+        fallback_cmd
+            .arg("-y")
+            .arg("-ss").arg("00:00:00")
+            .arg("-i").arg(&dest_video)
+            .arg("-vf").arg("scale=480:-2")
+            .arg("-vframes").arg("1")
+            .arg("-q:v").arg("2")
+            .arg(&dest_thumb);
+        let _ = fallback_cmd.status();
+    }
 
     // Query resolution and duration using ffprobe if available
     let resolution = get_video_resolution(&dest_video).unwrap_or_else(|| "1920x1080".to_string());
@@ -393,7 +407,7 @@ async fn batch_import_wallpapers(
     state: State<'_, AppState>,
     source_paths: Vec<String>,
 ) -> Result<BatchImportResult, String> {
-    use tauri::{Emitter, Manager};
+    use tauri::Emitter;
 
     let wp_mgr = state.wallpaper_mgr.clone();
 
@@ -430,9 +444,6 @@ async fn batch_import_wallpapers(
                 status: "processing".to_string(),
             };
             let _ = app.emit("batch-import-progress", &progress);
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.emit("batch-import-progress", &progress);
-            }
 
             match import_single_file_to_storage(&wp_mgr, path) {
                 Ok(item) => {
@@ -458,9 +469,6 @@ async fn batch_import_wallpapers(
             status: "finished".to_string(),
         };
         let _ = app.emit("batch-import-progress", &finish_progress);
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.emit("batch-import-progress", &finish_progress);
-        }
 
         Ok(BatchImportResult {
             imported,
@@ -993,7 +1001,6 @@ async fn compress_all_wallpapers(
     target_fps: u32,
 ) -> Result<CachingFinishedPayload, String> {
     use tauri::Emitter;
-    use tauri::Manager;
 
     BATCH_CANCEL_REQUESTED.store(false, Ordering::SeqCst);
 
@@ -1004,9 +1011,6 @@ async fn compress_all_wallpapers(
             cancelled: false,
         };
         let _ = app.emit("caching-finished", &payload);
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.emit("caching-finished", &payload);
-        }
         return Ok(payload);
     }
 
@@ -1031,9 +1035,6 @@ async fn compress_all_wallpapers(
             cancelled: false,
         };
         let _ = app.emit("caching-finished", &payload);
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.emit("caching-finished", &payload);
-        }
         return Ok(payload);
     }
 
@@ -1055,9 +1056,6 @@ async fn compress_all_wallpapers(
         };
         *caching_progress_state.lock().unwrap() = Some(init_payload.clone());
         let _ = app.emit("caching-progress", &init_payload);
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.emit("caching-progress", &init_payload);
-        }
     }
 
     let mut handles = Vec::new();
@@ -1098,9 +1096,6 @@ async fn compress_all_wallpapers(
             };
             *progress_state.lock().unwrap() = Some(start_payload.clone());
             let _ = app_handle.emit("caching-progress", &start_payload);
-            if let Some(w) = app_handle.get_webview_window("main") {
-                let _ = w.emit("caching-progress", &start_payload);
-            }
 
             let res = tokio::task::spawn_blocking({
                 let id = item_clone.id.clone();
@@ -1130,12 +1125,6 @@ async fn compress_all_wallpapers(
                         "id": item_clone.id,
                         "quality_level": quality_level
                     }));
-                    if let Some(w) = app_handle.get_webview_window("main") {
-                        let _ = w.emit("wallpaper-cached", serde_json::json!({
-                            "id": item_clone.id,
-                            "quality_level": quality_level
-                        }));
-                    }
                     Some((item_clone.id.clone(), encode_res))
                 }
                 _ => None,
@@ -1155,9 +1144,6 @@ async fn compress_all_wallpapers(
             };
             *progress_state.lock().unwrap() = Some(finish_payload.clone());
             let _ = app_handle.emit("caching-progress", &finish_payload);
-            if let Some(w) = app_handle.get_webview_window("main") {
-                let _ = w.emit("caching-progress", &finish_payload);
-            }
 
             item_res
         });
@@ -1207,9 +1193,6 @@ async fn compress_all_wallpapers(
         cancelled,
     };
     let _ = app.emit("caching-finished", &payload);
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.emit("caching-finished", &payload);
-    }
 
     Ok(payload)
 }
@@ -1239,13 +1222,16 @@ fn get_workshop_items(state: State<'_, AppState>) -> Vec<WorkshopItem> {
 fn add_to_steam_client() -> Result<String, String> {
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
-    let accounts_updated = SteamShortcutInstaller::install_to_steam(&current_exe, "AetherPaper", &current_dir)?;
-    Ok(format!("Successfully registered AetherPaper to {} Steam account(s)! Restart Steam to see it in your library.", accounts_updated))
+    let accounts_updated = SteamShortcutInstaller::install_to_steam(&current_exe, "Animated Linux", &current_dir)?;
+    Ok(format!("Successfully registered Animated Linux to {} Steam account(s)! Restart Steam to see it in your library.", accounts_updated))
 }
 
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     format!("{:x}", now)
 }
 
@@ -1329,9 +1315,10 @@ async fn get_cache_stats(state: State<'_, AppState>) -> Result<CacheStats, Strin
 #[tauri::command]
 async fn clear_variant_cache(state: State<'_, AppState>) -> Result<usize, String> {
     let dir = state.wallpaper_mgr.get_storage_dir();
+    let scan_dir = dir.clone();
     let deleted = tokio::task::spawn_blocking(move || {
         let mut del_count = 0;
-        if let Ok(entries) = std::fs::read_dir(&dir) {
+        if let Ok(entries) = std::fs::read_dir(&scan_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if let Some(fname) = path.file_name().and_then(|n| n.to_str()) {
@@ -1354,9 +1341,26 @@ async fn clear_variant_cache(state: State<'_, AppState>) -> Result<usize, String
     }
     state.wallpaper_mgr.save_library(&library)?;
 
-    let mut active_lock = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
-    if let Some(active) = &mut *active_lock {
-        active.cached_qualities = vec![5];
+    let need_reapply = {
+        let mut active_lock = state.wallpaper_mgr.active_wallpaper.lock().unwrap();
+        if let Some(active) = &mut *active_lock {
+            active.cached_qualities = vec![5];
+            let orig = dir.join(format!("{}.{}", active.id, active.format));
+            if orig.exists() && active.file_path.contains("_q") {
+                active.file_path = orig.to_string_lossy().to_string();
+                Some(active.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+    if let Some(reapply_wp) = need_reapply {
+        let req_mgr = state.request_manager.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = req_mgr.apply_wallpaper(reapply_wp, None).await;
+        });
     }
 
     Ok(deleted)
@@ -1741,12 +1745,13 @@ fn main() {
             set_main_display
         ])
         .run(tauri::generate_context!())
-        .expect("error while running AetherPaper tauri application");
+        .expect("error while running Animated Linux tauri application");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[test]
     fn test_resolve_app_executable_and_icon() {

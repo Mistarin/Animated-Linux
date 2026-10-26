@@ -1,4 +1,4 @@
-// Custom Clean SVG Icon Set for AetherPaper
+// Custom Clean SVG Icon Set for Animated Linux
 
 export const Icons = {
   // Brand & Steam

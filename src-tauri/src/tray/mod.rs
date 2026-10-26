@@ -36,17 +36,32 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "toggle_pause" => {
                     if let Some(state) = app.try_state::<AppState>() {
                         let is_paused = state.wallpaper_mgr.is_paused();
+                        let target_paused = !is_paused;
+                        let (volume, is_muted, speed) = {
+                            let s = state.wallpaper_mgr.get_settings();
+                            (s.volume, s.is_muted, s.speed)
+                        };
                         let req_mgr = state.request_manager.clone();
+                        let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = req_mgr.set_playback_state(!is_paused, 0, true, 1.0).await;
+                            if req_mgr.set_playback_state(target_paused, volume, is_muted, speed).await.is_ok() {
+                                use tauri::Emitter;
+                                let _ = app_handle.emit("wallpaper-playback-changed", serde_json::json!({
+                                    "is_paused": target_paused
+                                }));
+                            }
                         });
                     }
                 }
                 "stop_wallpaper" => {
                     if let Some(state) = app.try_state::<AppState>() {
                         let req_mgr = state.request_manager.clone();
+                        let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = req_mgr.stop_wallpaper().await;
+                            if req_mgr.stop_wallpaper().await.is_ok() {
+                                use tauri::Emitter;
+                                let _ = app_handle.emit("wallpaper-stopped", ());
+                            }
                         });
                     }
                 }

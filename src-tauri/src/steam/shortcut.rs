@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_compute_shortcut_id() {
-        let id = SteamShortcutInstaller::compute_shortcut_id("/usr/bin/aetherpaper", "AetherPaper");
+        let id = SteamShortcutInstaller::compute_shortcut_id("/usr/bin/animated-linux", "Animated Linux");
         assert_ne!(id, 0);
         assert!(id >= 0x80000000);
     }

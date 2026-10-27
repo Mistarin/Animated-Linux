@@ -1014,6 +1014,12 @@ function setupPerformanceControls() {
 
   if (chkInactiveBlack) {
     chkInactiveBlack.addEventListener('change', async () => {
+      if (chkInactiveBlack.checked && chkInactiveBlur) {
+        chkInactiveBlur.checked = false;
+        if (rowBlurStrength) {
+          rowBlurStrength.style.display = 'none';
+        }
+      }
       await syncPerformanceSettings();
       showToast(chkInactiveBlack.checked ? 'Inactive screen: Black screen mode enabled' : 'Inactive screen: Black screen mode disabled', 'info');
     });
@@ -1021,6 +1027,9 @@ function setupPerformanceControls() {
 
   if (chkInactiveBlur) {
     chkInactiveBlur.addEventListener('change', async () => {
+      if (chkInactiveBlur.checked && chkInactiveBlack) {
+        chkInactiveBlack.checked = false;
+      }
       if (rowBlurStrength) {
         rowBlurStrength.style.display = chkInactiveBlur.checked ? 'flex' : 'none';
       }
@@ -1513,13 +1522,18 @@ async function loadPerformanceSettings() {
     setPanSelectValue(selectPanY, currentPanY);
     setSpeedSelectValue(selectSpeed, currentSpeed);
     chkHardwareAccel.checked = s.hardware_accel;
+    let inactiveBlack = s.inactive_black_screen || false;
+    let inactiveBlur = s.inactive_blur || false;
+    if (inactiveBlack && inactiveBlur) {
+      inactiveBlur = false;
+    }
     if (chkInactiveBlack) {
-      chkInactiveBlack.checked = s.inactive_black_screen || false;
+      chkInactiveBlack.checked = inactiveBlack;
     }
     if (chkInactiveBlur) {
-      chkInactiveBlur.checked = s.inactive_blur || false;
+      chkInactiveBlur.checked = inactiveBlur;
       if (rowBlurStrength) {
-        rowBlurStrength.style.display = s.inactive_blur ? 'flex' : 'none';
+        rowBlurStrength.style.display = inactiveBlur ? 'flex' : 'none';
       }
     }
     if (rngBlurStrength) {

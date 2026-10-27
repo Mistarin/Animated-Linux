@@ -60,15 +60,19 @@ impl KdePlasmaBackend {
         if main_qml.exists() {
             if let Ok(mut qml) = std::fs::read_to_string(&main_qml) {
                 let mut qml_changed = false;
-                if !qml.contains("inactiveBlackScreen") {
+                if !qml.contains("inactiveBlackScreen") || qml.contains("InactiveBlackScreen || false") {
+                    qml = qml.replace(
+                        "property bool debugEnabled: main.configuration.DebugEnabled\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\n    property bool restartOnResume: main.configuration.RestartOnResume || false",
+                        "property bool debugEnabled: main.configuration.DebugEnabled === true || main.configuration.DebugEnabled === \"true\"\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen === true || main.configuration.InactiveBlackScreen === \"true\"\n    property bool restartOnResume: main.configuration.RestartOnResume === true || main.configuration.RestartOnResume === \"true\"",
+                    );
                     qml = qml.replace(
                         "property bool debugEnabled: main.configuration.DebugEnabled",
-                        "property bool debugEnabled: main.configuration.DebugEnabled\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\n    property bool restartOnResume: main.configuration.RestartOnResume || false",
+                        "property bool debugEnabled: main.configuration.DebugEnabled === true || main.configuration.DebugEnabled === \"true\"\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen === true || main.configuration.InactiveBlackScreen === \"true\"\n    property bool restartOnResume: main.configuration.RestartOnResume === true || main.configuration.RestartOnResume === \"true\"",
                     );
                     qml_changed = true;
                 }
                 if !qml.contains("blackOverlay") {
-                    let overlay_qml = "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }\n\n        Rectangle {\n            id: blackOverlay\n            anchors.fill: parent\n            color: \"#000000\"\n            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0\n            visible: opacity > 0.001 || (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0)\n            z: 99\n            Behavior on opacity {\n                NumberAnimation {\n                    duration: 350\n                    easing.type: Easing.InOutQuad\n                }\n            }\n        }";
+                    let overlay_qml = "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }\n\n        Rectangle {\n            id: blackOverlay\n            anchors.fill: parent\n            color: \"#000000\"\n            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0\n            visible: opacity > 0.001\n            z: 99\n            Behavior on opacity {\n                NumberAnimation {\n                    duration: 350\n                    easing.type: Easing.InOutQuad\n                }\n            }\n        }";
                     qml = qml.replace(
                         "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }",
                         overlay_qml,
@@ -197,10 +201,10 @@ impl WallpaperBackend for KdePlasmaBackend {
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
+        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
 
         // Plasma 6 Script to update wallpaper plugin on specified screen(s)
         // Smart Video Wallpaper Reborn requires VideoUrls to be a JSON array of video objects with "enabled": true
@@ -290,10 +294,10 @@ print("Applied successfully to target " + target);
 
     fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
+        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -332,10 +336,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         };
         let check_active_screen = settings.pause_detection_mode == "individual";
         let debug_enabled = settings.debug_enabled;
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
+        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
 
         let restart_script = if settings.restart_on_resume {
             r#"

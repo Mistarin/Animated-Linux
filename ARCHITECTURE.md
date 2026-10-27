@@ -156,12 +156,12 @@ Smart Video Wallpaper Reborn natively contains a `FastBlur` element (`mainBlur`)
   - `BlurMode` is set to `5` (`Enum.BlurMode.Never`).
   - `BlurRadius` is set to `0`.
 
-### 6.3 Combined Operation
-Fade-to-Black and Fade-to-Blur can be used independently or combined:
+### 6.3 Mutual Exclusivity and Fallback Operation
+Fade-to-Black and Fade-to-Blur are mutually exclusive options in the UI and backend settings:
+- **Mutual Exclusivity**: Turning one effect on automatically disables the other in the switches/UI and engine configuration.
 - **Blur only**: The video smoothly softens into a frosted glass background when covered or paused.
 - **Black only**: The video smoothly darkens to pure black when covered or paused.
-- **Both**: The video blurs while simultaneously darkening to black for a cinematic vignette effect.
-- **Neither**: The video crisply pauses and holds the current frame.
+- **Neither (Default)**: The video crisply pauses and holds the current frame, displaying a crisp static image of the video without any black or blur overlay.
 
 ---
 

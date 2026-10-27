@@ -180,7 +180,10 @@ impl WallpaperManager {
         let initial_settings = if settings_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&settings_path) {
                 match serde_json::from_str::<PlaybackSettings>(&content) {
-                    Ok(s) => {
+                    Ok(mut s) => {
+                        if s.inactive_black_screen && s.inactive_blur {
+                            s.inactive_blur = false;
+                        }
                         println!(
                             "[AnimatedLinux] Restored persistent playback settings: Quality Q{}, {} FPS, {}x speed, FillMode {}, Pan ({}, {}), PausePolicy {}, StartMinimized: {}",
                             s.quality_level, s.target_fps, s.speed, s.fill_mode, s.pan_x, s.pan_y, s.pause_policy, s.start_minimized
@@ -480,6 +483,16 @@ print(JSON.stringify(results));
         settings.inactive_black_screen = inactive_black_screen;
         if let Some(blur) = inactive_blur {
             settings.inactive_blur = blur;
+        }
+        // Enforce mutual exclusivity: turning one on disables the other
+        if settings.inactive_black_screen && settings.inactive_blur {
+            if inactive_black_screen && inactive_blur != Some(true) {
+                settings.inactive_blur = false;
+            } else if inactive_blur == Some(true) && !inactive_black_screen {
+                settings.inactive_black_screen = false;
+            } else {
+                settings.inactive_blur = false;
+            }
         }
         if let Some(strength) = blur_strength {
             settings.blur_strength = strength.clamp(1, 64);
@@ -1035,5 +1048,99 @@ mod tests {
         let legacy_settings: PlaybackSettings = serde_json::from_str(legacy_json).unwrap();
         assert!(!legacy_settings.inactive_blur);
         assert_eq!(legacy_settings.blur_strength, 32);
+    }
+
+    #[test]
+    fn test_black_screen_and_blur_mutual_exclusivity() {
+        let mgr = WallpaperManager::new();
+
+        // 1. Enabling black screen sets black screen true and blur false
+        let res = mgr.update_performance_settings(
+            3, 30, false, 0, true, true, Some(false), None, false, true, None, None, None
+        ).unwrap();
+        assert!(res.inactive_black_screen);
+        assert!(!res.inactive_blur);
+
+        // 2. Enabling blur disables black screen
+        let res2 = mgr.update_performance_settings(
+            3, 30, false, 0, true, false, Some(true), Some(40), false, true, None, None, None
+        ).unwrap();
+        assert!(!res2.inactive_black_screen);
+        assert!(res2.inactive_blur);
+        assert_eq!(res2.blur_strength, 40);
+
+        // 3. Enabling black screen disables blur
+        let res3 = mgr.update_performance_settings(
+            3, 30, false, 0, true, true, None, None, false, true, None, None, None
+        ).unwrap();
+        assert!(res3.inactive_black_screen);
+        assert!(!res3.inactive_blur);
+
+        // 4. If both passed true, mutual exclusivity resolves cleanly (black true, blur false)
+        let res4 = mgr.update_performance_settings(
+            3, 30, false, 0, true, true, Some(true), None, false, true, None, None, None
+        ).unwrap();
+        assert!(res4.inactive_black_screen);
+        assert!(!res4.inactive_blur);
+
+        // 5. Turning both off works cleanly
+        let res5 = mgr.update_performance_settings(
+            3, 30, false, 0, true, false, Some(false), None, false, true, None, None, None
+        ).unwrap();
+        assert!(!res5.inactive_black_screen);
+        assert!(!res5.inactive_blur);
+    }
+
+    #[test]
+    fn test_fill_mode_and_display_mode_mapping() {
+        let mut settings = PlaybackSettings::default();
+        // Default fill mode is 2 (Crop / Zoom)
+        assert_eq!(settings.fill_mode, 2);
+
+        // Test display_mode mapping:
+        // 0 -> Scale (2), 1 -> Aspect (0), 2 -> Crop (1)
+        let map_display_mode = |fill_mode: i32| -> i32 {
+            match fill_mode {
+                0 => 2, // Scale / Stretch
+                1 => 0, // Aspect / Keep aspect
+                2 => 1, // Crop / Zoom fill
+                _ => 1,
+            }
+        };
+
+        assert_eq!(map_display_mode(0), 2); // Stretch -> Scale
+        assert_eq!(map_display_mode(1), 0); // Fit -> Aspect
+        assert_eq!(map_display_mode(2), 1); // Crop -> Zoom
+
+        settings.fill_mode = 0;
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains("\"fill_mode\":0"));
+    }
+
+    #[test]
+    fn test_pause_policy_mapping() {
+        // PauseMode mapping for Catsout MPV:
+        // 0: Never -> 0
+        // 1: FullScreen -> 5
+        // 2: Max -> 2
+        // 3: Any -> 1
+        // 4: Battery -> 0 (with PauseOnBatPower = true)
+        let map_pause_mode = |policy: i32| -> (i32, bool) {
+            let pause_mode = match policy {
+                0 => 0,
+                1 => 5,
+                2 => 2,
+                3 => 1,
+                _ => 0,
+            };
+            let pause_on_bat = policy == 4;
+            (pause_mode, pause_on_bat)
+        };
+
+        assert_eq!(map_pause_mode(0), (0, false));
+        assert_eq!(map_pause_mode(1), (5, false));
+        assert_eq!(map_pause_mode(2), (2, false));
+        assert_eq!(map_pause_mode(3), (1, false));
+        assert_eq!(map_pause_mode(4), (0, true));
     }
 }

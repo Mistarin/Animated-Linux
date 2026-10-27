@@ -85,7 +85,9 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
         let is_muted = settings.is_muted;
         let volume = settings.volume;
         let speed = settings.speed;
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let restart_on_resume = settings.restart_on_resume;
         let is_paused = settings.is_paused;
 
@@ -121,6 +123,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("Volume", {volume});
         d.writeConfig("Speed", {speed});
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("MpvHwdec", "auto-safe");
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("UserPaused", {is_paused});
@@ -141,6 +145,8 @@ print("Applied MPV wallpaper to target " + target);
             volume = volume,
             speed = speed,
             inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
+            blur_radius = blur_radius,
             restart_on_resume = restart_on_resume,
             is_paused = is_paused,
         );
@@ -151,7 +157,9 @@ print("Applied MPV wallpaper to target " + target);
 
     fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -161,13 +169,17 @@ for (var i = 0; i < allDesktops.length; i++) {{
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("UserPaused", true);
         d.reloadConfig();
     }}
 }}
 "#,
             target_screen = target_screen,
-            inactive_black = inactive_black
+            inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
+            blur_radius = blur_radius
         );
         Self::run_plasma_script(&script)?;
         Ok(())
@@ -186,7 +198,9 @@ for (var i = 0; i < allDesktops.length; i++) {{
         let pause_on_bat = settings.pause_policy == 4;
         let pause_detection_mode = &settings.pause_detection_mode;
         let main_screen = settings.main_display_id;
-        let inactive_black = settings.inactive_black_screen;
+        let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let restart_on_resume = settings.restart_on_resume;
         let speed = settings.speed;
         let video_source_js = if let Some(wp) = wallpaper {
@@ -220,6 +234,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
             d.writeConfig("WallpaperSource", videoSource);
         }}
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("PauseMode", {pause_mode});
         var filterByScreen = (detectionMode === "individual");
@@ -244,6 +260,8 @@ for (var i = 0; i < allDesktops.length; i++) {{
             pause_on_bat = pause_on_bat,
             speed = speed,
             inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
+            blur_radius = blur_radius,
             restart_on_resume = restart_on_resume,
         );
         Self::run_plasma_script(&script)?;

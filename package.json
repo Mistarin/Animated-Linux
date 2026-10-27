@@ -9,6 +9,7 @@
     "start": "./launch.sh",
     "build": "vite build",
     "preview": "vite preview",
+    "test:view-modes": "python3 scripts/test_view_modes_live.py",
     "tauri": "tauri"
   },
   "dependencies": {

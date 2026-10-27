@@ -67,6 +67,20 @@ if os.path.isfile(main_xml):
     </entry>
   </group>""")
         changed = True
+    if "InactiveBlurScreen" not in content:
+        content = content.replace("</group>", """    <entry name="InactiveBlurScreen" type="Bool">
+      <label>Fade to blur when inactive or paused</label>
+      <default>false</default>
+    </entry>
+  </group>""")
+        changed = True
+    if "BlurRadius" not in content:
+        content = content.replace("</group>", """    <entry name="BlurRadius" type="Int">
+      <label>Blur strength radius</label>
+      <default>32</default>
+    </entry>
+  </group>""")
+        changed = True
     if "RestartOnResume" not in content:
         content = content.replace("</group>", """    <entry name="RestartOnResume" type="Bool">
       <label>Restart animation from beginning on resume</label>
@@ -91,10 +105,19 @@ if os.path.isfile(main_qml):
     with open(main_qml, "r", encoding="utf-8") as f:
         content = f.read()
     changed = False
-    if "userPaused" not in content:
-        content = content.replace(
-            "property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent",
-            "property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent\n    property bool   inactiveBlack: wallpaper.configuration.InactiveBlackScreen || false\n    property bool   restartOnResume: wallpaper.configuration.RestartOnResume || false\n    property bool   userPaused: wallpaper.configuration.UserPaused || false"
+    target_props = """property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
+    property bool   inactiveBlack: wallpaper.configuration.InactiveBlackScreen === true || wallpaper.configuration.InactiveBlackScreen === "true"
+    property bool   inactiveBlur: wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true"
+    property int    blurRadius: wallpaper.configuration.BlurRadius ? parseInt(wallpaper.configuration.BlurRadius) : 32
+    property bool   restartOnResume: wallpaper.configuration.RestartOnResume === true || wallpaper.configuration.RestartOnResume === "true"
+    property bool   userPaused: wallpaper.configuration.UserPaused === true || wallpaper.configuration.UserPaused === "true" """
+
+    if "inactiveBlur" not in content or "|| false" in content:
+        import re
+        content = re.sub(
+            r'property int\s+pauseBatPercent:\s*wallpaper\.configuration\.PauseBatPercent[\s\S]*?(?=\s+property var|\s+// auto pause|\s+property string steamlibrary)',
+            target_props,
+            content
         )
         changed = True
     if "!userPaused" not in content:
@@ -113,90 +136,119 @@ if os.path.isfile(mpv_qml):
     with open(mpv_qml, "r", encoding="utf-8") as f:
         content = f.read()
     changed = False
-    if "fadeRect" not in content:
-        fade_block = """    Rectangle {
+
+    if "Qt5Compat.GraphicalEffects" not in content:
+        content = content.replace("import QtQuick 2.5", "import QtQuick 2.15\nimport Qt5Compat.GraphicalEffects")
+        changed = True
+
+    # Strip legacy imperative opacity overrides
+    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }\n", "")
+    content = content.replace("        if (background.inactiveBlack && !background.ok) {\n            fadeRect.opacity = 1.0;\n        } else {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+
+    if 'seek", "0", "absolute"' not in content:
+        content = content.replace(
+            "function play(){\n        // stop pause time",
+            "function play(){\n        // stop pause time\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.command([\"seek\", \"0\", \"absolute\"]);\n        }"
+        )
+        changed = True
+
+    effects_block = """    FastBlur {
+        id: blurEffect
+        anchors.fill: player
+        source: player
+        radius: (background.inactiveBlur && !background.ok) ? background.blurRadius : 0
+        visible: radius > 0.001
+        z: 998
+        Behavior on radius {
+            NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+        }
+    }
+
+    Rectangle {
         id: fadeRect
         anchors.fill: parent
         color: "#000000"
         opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0
+        visible: opacity > 0.001
         z: 999
         Behavior on opacity {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
         }
     }
 
-    Component.onCompleted:{
-        background.nowBackend = 'mpv';
-        videoItem.displayModeChanged();
-        if (background.inactiveBlack && !background.ok) {
-            fadeRect.opacity = 1.0;
-        } else {
-            fadeRect.opacity = 0.0;
-        }
-    }"""
-        content = content.replace("Component.onCompleted:{", fade_block)
+    Component.onCompleted:{"""
+
+    if "blurEffect" not in content:
+        import re
+        if "Rectangle {\n        id: fadeRect" in content:
+            content = re.sub(r'Rectangle\s*\{\s*id:\s*fadeRect[\s\S]*?Component\.onCompleted\s*:\s*\{', effects_block, content)
+        elif "Component.onCompleted:{" in content:
+            content = content.replace("Component.onCompleted:{", effects_block)
         changed = True
-    if 'seek", "0", "absolute"' not in content:
-        content = content.replace(
-            "function play(){\n        // stop pause time",
-            "function play(){\n        // stop pause time\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.command([\"seek\", \"0\", \"absolute\"]);\n        }\n        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }"
-        )
-        changed = True
-    if "fadeRect.opacity = 1.0" not in content:
-        content = content.replace(
-            "function pause(){\n        volumeFade.stop();\n        pauseTimer.start();",
-            "function pause(){\n        volumeFade.stop();\n        pauseTimer.start();\n        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }"
-        )
-        changed = True
-    if changed:
-        with open(mpv_qml, "w", encoding="utf-8") as f:
-            f.write(content)
-        print("[Installer] Injected fadeRect and restartOnResume into Mpv.qml")
+
+    with open(mpv_qml, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("[Installer] Injected FastBlur and declarative fadeRect into Mpv.qml")
 
 # 4. Patch QtMultimedia.qml
 if os.path.isfile(qt_qml):
     with open(qt_qml, "r", encoding="utf-8") as f:
         content = f.read()
     changed = False
-    if "fadeRect" not in content:
-        fade_block = """    Rectangle {
+
+    if "Qt5Compat.GraphicalEffects" not in content:
+        content = content.replace("import QtQuick 2.5", "import QtQuick 2.15\nimport Qt5Compat.GraphicalEffects")
+        changed = True
+
+    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }\n", "")
+    content = content.replace("        if (background.inactiveBlack && !background.ok) {\n            fadeRect.opacity = 1.0;\n        } else {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+
+    if "player.position = 0;" not in content:
+        content = content.replace(
+            "function play(){\n        pauseTimer.stop();",
+            "function play(){\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.position = 0;\n        }"
+        )
+        changed = True
+
+    qt_effects_block = """    FastBlur {
+        id: blurEffect
+        anchors.fill: videoView
+        source: videoView
+        radius: (background.inactiveBlur && !background.ok) ? background.blurRadius : 0
+        visible: radius > 0.001
+        z: 998
+        Behavior on radius {
+            NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+        }
+    }
+
+    Rectangle {
         id: fadeRect
         anchors.fill: parent
         color: "#000000"
         opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0
+        visible: opacity > 0.001
         z: 999
         Behavior on opacity {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
         }
     }
 
-    Component.onCompleted:{
-        background.nowBackend = "QtMultimedia";
-        videoItem.displayModeChanged();
-        if (background.inactiveBlack && !background.ok) {
-            fadeRect.opacity = 1.0;
-        } else {
-            fadeRect.opacity = 0.0;
-        }
-    }"""
-        content = content.replace("Component.onCompleted:{", fade_block)
+    Component.onCompleted:{"""
+
+    if "blurEffect" not in content:
+        import re
+        if "Rectangle {\n        id: fadeRect" in content:
+            content = re.sub(r'Rectangle\s*\{\s*id:\s*fadeRect[\s\S]*?Component\.onCompleted\s*:\s*\{', qt_effects_block, content)
+        elif "Component.onCompleted:{" in content:
+            content = content.replace("Component.onCompleted:{", qt_effects_block)
         changed = True
-    if "player.position = 0;" not in content:
-        content = content.replace(
-            "function play(){\n        pauseTimer.stop();",
-            "function play(){\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.position = 0;\n        }\n        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }"
-        )
-        changed = True
-    if "fadeRect.opacity = 1.0" not in content:
-        content = content.replace(
-            "function pause(){\n        volumeFade.stop();\n        pauseTimer.start();",
-            "function pause(){\n        volumeFade.stop();\n        pauseTimer.start();\n        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }"
-        )
-        changed = True
-    if changed:
-        with open(qt_qml, "w", encoding="utf-8") as f:
-            f.write(content)
-        print("[Installer] Injected fadeRect and restartOnResume into QtMultimedia.qml")
+
+    with open(qt_qml, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("[Installer] Injected FastBlur and declarative fadeRect into QtMultimedia.qml")
 
 # 4. Patch Smart Video Wallpaper Reborn if present
 reborn_sys = "/usr/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn"
@@ -235,10 +287,14 @@ if os.path.isdir(reborn_user):
         with open(reborn_qml, "r", encoding="utf-8") as f:
             qml_c = f.read()
         q_changed = False
-        if "inactiveBlackScreen" not in qml_c:
+        if "inactiveBlackScreen" not in qml_c or "|| false" in qml_c:
+            qml_c = qml_c.replace(
+                "property bool debugEnabled: main.configuration.DebugEnabled\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\n    property bool restartOnResume: main.configuration.RestartOnResume || false",
+                "property bool debugEnabled: main.configuration.DebugEnabled === true || main.configuration.DebugEnabled === \"true\"\\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen === true || main.configuration.InactiveBlackScreen === \"true\"\\n    property bool restartOnResume: main.configuration.RestartOnResume === true || main.configuration.RestartOnResume === \"true\""
+            )
             qml_c = qml_c.replace(
                 "property bool debugEnabled: main.configuration.DebugEnabled",
-                "property bool debugEnabled: main.configuration.DebugEnabled\\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\\n    property bool restartOnResume: main.configuration.RestartOnResume || false"
+                "property bool debugEnabled: main.configuration.DebugEnabled === true || main.configuration.DebugEnabled === \"true\"\\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen === true || main.configuration.InactiveBlackScreen === \"true\"\\n    property bool restartOnResume: main.configuration.RestartOnResume === true || main.configuration.RestartOnResume === \"true\""
             )
             q_changed = True
         if "blackOverlay" not in qml_c:
@@ -250,7 +306,7 @@ if os.path.isdir(reborn_user):
             anchors.fill: parent
             color: "#000000"
             opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0
-            visible: opacity > 0.001 || (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0)
+            visible: opacity > 0.001
             z: 99
             Behavior on opacity {
                 NumberAnimation {

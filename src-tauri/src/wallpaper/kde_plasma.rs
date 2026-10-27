@@ -6,7 +6,112 @@ pub struct KdePlasmaBackend;
 
 impl KdePlasmaBackend {
     pub fn new() -> Self {
+        Self::ensure_local_patch();
         Self
+    }
+
+    pub fn ensure_local_patch() {
+        let local_dir = match dirs::data_local_dir() {
+            Some(d) => d.join("plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn"),
+            None => return,
+        };
+        let sys_dir = Path::new("/usr/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn");
+
+        if !sys_dir.exists() && !local_dir.exists() {
+            return;
+        }
+
+        if !local_dir.exists() && sys_dir.exists() {
+            if let Err(e) = Self::copy_dir_recursive(sys_dir, &local_dir) {
+                eprintln!("[AnimatedLinux] Failed to copy Reborn plugin to user directory: {}", e);
+                return;
+            }
+        }
+
+        let main_xml = local_dir.join("contents/config/main.xml");
+        let main_qml = local_dir.join("contents/ui/main.qml");
+
+        let mut changed = false;
+
+        if main_xml.exists() {
+            if let Ok(mut xml) = std::fs::read_to_string(&main_xml) {
+                let mut xml_changed = false;
+                if !xml.contains("InactiveBlackScreen") {
+                    xml = xml.replace(
+                        "</group>",
+                        "    <entry name=\"InactiveBlackScreen\" type=\"Bool\">\n      <label>Fade to black when inactive or paused</label>\n      <default>false</default>\n    </entry>\n  </group>",
+                    );
+                    xml_changed = true;
+                }
+                if !xml.contains("RestartOnResume") {
+                    xml = xml.replace(
+                        "</group>",
+                        "    <entry name=\"RestartOnResume\" type=\"Bool\">\n      <label>Restart video from beginning on resume</label>\n      <default>false</default>\n    </entry>\n  </group>",
+                    );
+                    xml_changed = true;
+                }
+                if xml_changed {
+                    let _ = std::fs::write(&main_xml, xml);
+                    changed = true;
+                }
+            }
+        }
+
+        if main_qml.exists() {
+            if let Ok(mut qml) = std::fs::read_to_string(&main_qml) {
+                let mut qml_changed = false;
+                if !qml.contains("inactiveBlackScreen") {
+                    qml = qml.replace(
+                        "property bool debugEnabled: main.configuration.DebugEnabled",
+                        "property bool debugEnabled: main.configuration.DebugEnabled\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\n    property bool restartOnResume: main.configuration.RestartOnResume || false",
+                    );
+                    qml_changed = true;
+                }
+                if !qml.contains("blackOverlay") {
+                    let overlay_qml = "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }\n\n        Rectangle {\n            id: blackOverlay\n            anchors.fill: parent\n            color: \"#000000\"\n            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0\n            visible: opacity > 0.001 || (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0)\n            z: 99\n            Behavior on opacity {\n                NumberAnimation {\n                    duration: 350\n                    easing.type: Easing.InOutQuad\n                }\n            }\n        }";
+                    qml = qml.replace(
+                        "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }",
+                        overlay_qml,
+                    );
+                    qml_changed = true;
+                }
+                if !qml.contains("player.player.position = 0") {
+                    let pause_patch = "        onTriggered: {\n            player.pause();\n            if (main.restartOnResume) {\n                try {\n                    player.player.position = 0;\n                } catch(e) {}\n            }\n        }";
+                    qml = qml.replace(
+                        "        onTriggered: {\n            player.pause();\n        }",
+                        pause_patch,
+                    );
+                    let play_patch = "        onTriggered: {\n            if (main.restartOnResume) {\n                try {\n                    player.player.position = 0;\n                } catch(e) {}\n            }\n            player.play();\n        }";
+                    qml = qml.replace(
+                        "        onTriggered: {\n            player.play();\n        }",
+                        play_patch,
+                    );
+                    qml_changed = true;
+                }
+                if qml_changed {
+                    let _ = std::fs::write(&main_qml, qml);
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            let _ = new_host_command("kbuildsycoca6").arg("--noincremental").output();
+        }
+    }
+
+    fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            if ty.is_dir() {
+                Self::copy_dir_recursive(&entry.path(), &dst.join(entry.file_name()))?;
+            } else {
+                std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+            }
+        }
+        Ok(())
     }
 
     fn run_plasma_script(script: &str) -> Result<String, String> {
@@ -92,6 +197,10 @@ impl WallpaperBackend for KdePlasmaBackend {
         let mute_mode = if settings.is_muted { 5 } else { 4 }; // 5: Always mute, 4: Never mute
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
+        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
 
         // Plasma 6 Script to update wallpaper plugin on specified screen(s)
         // Smart Video Wallpaper Reborn requires VideoUrls to be a JSON array of video objects with "enabled": true
@@ -147,6 +256,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("FillMode", {fill_mode});
         d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
         d.writeConfig("DebugEnabled", {debug_enabled});
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("BlurMode", {blur_mode});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("PauseMode", {pause_mode});
         d.writeConfig("MuteMode", {mute_mode});
         d.writeConfig("Volume", {volume_val});
@@ -162,6 +275,10 @@ print("Applied successfully to target " + target);
             fill_mode = fill_mode,
             check_active_screen = check_active_screen,
             debug_enabled = debug_enabled,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume,
+            blur_mode = blur_mode,
+            blur_radius = blur_radius,
             pause_mode = pause_mode,
             mute_mode = mute_mode,
             volume_val = volume_val
@@ -171,8 +288,12 @@ print("Applied successfully to target " + target);
         Ok(())
     }
 
-    fn pause(&self, screen: Option<i32>, _settings: &PlaybackSettings) -> Result<(), String> {
+    fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
+        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -181,12 +302,20 @@ for (var i = 0; i < allDesktops.length; i++) {{
     var d = allDesktops[i];
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("BlurMode", {blur_mode});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("PauseMode", 99);
         d.reloadConfig();
     }}
 }}
 "#,
-            target_screen = target_screen
+            target_screen = target_screen,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume,
+            blur_mode = blur_mode,
+            blur_radius = blur_radius
         );
         Self::run_plasma_script(&script)?;
         Ok(())
@@ -203,6 +332,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         };
         let check_active_screen = settings.pause_detection_mode == "individual";
         let debug_enabled = settings.debug_enabled;
+        let inactive_black = settings.inactive_black_screen;
+        let restart_on_resume = settings.restart_on_resume;
+        let blur_mode = if settings.inactive_blur { 3 } else { 5 };
+        let blur_radius = if settings.inactive_blur { settings.blur_strength } else { 0 };
 
         let restart_script = if settings.restart_on_resume {
             r#"
@@ -242,6 +375,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
 {restart_script}        d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
         d.writeConfig("DebugEnabled", {debug_enabled});
+        d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("RestartOnResume", {restart_on_resume});
+        d.writeConfig("BlurMode", {blur_mode});
+        d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("PauseMode", {pause_mode});
         d.reloadConfig();
     }}
@@ -251,6 +388,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
             restart_script = restart_script,
             check_active_screen = check_active_screen,
             debug_enabled = debug_enabled,
+            inactive_black = inactive_black,
+            restart_on_resume = restart_on_resume,
+            blur_mode = blur_mode,
+            blur_radius = blur_radius,
             pause_mode = pause_mode
         );
         Self::run_plasma_script(&script)?;

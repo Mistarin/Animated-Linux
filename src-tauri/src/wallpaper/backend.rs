@@ -98,6 +98,8 @@ pub struct PlaybackSettings {
     pub target_fps: u32,    // 0: Source/Native, 15, 24, 30, 60
     pub hardware_accel: bool,
     pub inactive_black_screen: bool,
+    pub inactive_blur: bool,
+    pub blur_strength: u32,
     pub restart_on_resume: bool,
     pub start_minimized: bool,
     pub pause_per_monitor: bool, // true: individual monitor, false: all monitors (everyone)
@@ -122,6 +124,8 @@ impl Default for PlaybackSettings {
             target_fps: 30,
             hardware_accel: true,
             inactive_black_screen: false,
+            inactive_blur: false,
+            blur_strength: 32,
             restart_on_resume: false,
             start_minimized: false,
             pause_per_monitor: true,

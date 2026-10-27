@@ -270,6 +270,27 @@
 
                   <div class="setting-row">
                     <div class="setting-row-text">
+                      <div class="setting-label">Fade to blur when inactive or paused</div>
+                      <div class="setting-subtext">Smoothly blurs the wallpaper when paused, covered, or idle</div>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="chk-inactive-blur" />
+                      <span class="switch-slider"></span>
+                    </label>
+                  </div>
+
+                  <div class="setting-row" id="row-blur-strength" style="display: none; padding-left: 12px; border-left: 2px solid var(--accent);">
+                    <div class="setting-row-text">
+                      <div class="setting-label">Blur strength: <span id="lbl-blur-strength">32px</span></div>
+                      <div class="setting-subtext">Adjust the radius of the blur effect (1 - 64 px)</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <input type="range" id="rng-blur-strength" min="1" max="64" value="32" style="width: 120px;" />
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-row-text">
                       <div class="setting-label">Restart animation from beginning on resume</div>
                       <div class="setting-subtext">Restarts video/animation from 0:00 instead of resuming mid-way</div>
                     </div>

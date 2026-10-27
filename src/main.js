@@ -120,6 +120,10 @@ const cachingProgressSpinner = document.getElementById('caching-progress-spinner
 const btnCancelCaching = document.getElementById('btn-cancel-caching');
 const chkHardwareAccel = document.getElementById('chk-hardware-accel');
 const chkInactiveBlack = document.getElementById('chk-inactive-black');
+const chkInactiveBlur = document.getElementById('chk-inactive-blur');
+const rowBlurStrength = document.getElementById('row-blur-strength');
+const rngBlurStrength = document.getElementById('rng-blur-strength');
+const lblBlurStrength = document.getElementById('lbl-blur-strength');
 const chkRestartOnResume = document.getElementById('chk-restart-on-resume');
 const settingBackend = document.getElementById('setting-backend');
 const chkAutostart = document.getElementById('chk-autostart');
@@ -1011,7 +1015,35 @@ function setupPerformanceControls() {
   if (chkInactiveBlack) {
     chkInactiveBlack.addEventListener('change', async () => {
       await syncPerformanceSettings();
-      showToast(chkInactiveBlack.checked ? 'Inactive screen: Black screen mode enabled' : 'Inactive screen: Static image mode enabled', 'info');
+      showToast(chkInactiveBlack.checked ? 'Inactive screen: Black screen mode enabled' : 'Inactive screen: Black screen mode disabled', 'info');
+    });
+  }
+
+  if (chkInactiveBlur) {
+    chkInactiveBlur.addEventListener('change', async () => {
+      if (rowBlurStrength) {
+        rowBlurStrength.style.display = chkInactiveBlur.checked ? 'flex' : 'none';
+      }
+      await syncPerformanceSettings();
+      showToast(chkInactiveBlur.checked ? 'Inactive screen: Blur mode enabled' : 'Inactive screen: Blur mode disabled', 'info');
+    });
+  }
+
+  if (rngBlurStrength) {
+    rngBlurStrength.addEventListener('input', () => {
+      if (lblBlurStrength) {
+        lblBlurStrength.textContent = `${rngBlurStrength.value}px`;
+      }
+    });
+    rngBlurStrength.addEventListener('change', async () => {
+      await syncPerformanceSettings();
+    });
+  }
+
+  if (chkRestartOnResume) {
+    chkRestartOnResume.addEventListener('change', async () => {
+      await syncPerformanceSettings();
+      showToast(chkRestartOnResume.checked ? 'Restart on resume enabled' : 'Restart on resume disabled', 'info');
     });
   }
 
@@ -1484,6 +1516,19 @@ async function loadPerformanceSettings() {
     if (chkInactiveBlack) {
       chkInactiveBlack.checked = s.inactive_black_screen || false;
     }
+    if (chkInactiveBlur) {
+      chkInactiveBlur.checked = s.inactive_blur || false;
+      if (rowBlurStrength) {
+        rowBlurStrength.style.display = s.inactive_blur ? 'flex' : 'none';
+      }
+    }
+    if (rngBlurStrength) {
+      const radius = s.blur_strength !== undefined ? s.blur_strength : 32;
+      rngBlurStrength.value = radius;
+      if (lblBlurStrength) {
+        lblBlurStrength.textContent = `${radius}px`;
+      }
+    }
     if (chkRestartOnResume) {
       chkRestartOnResume.checked = s.restart_on_resume || false;
     }
@@ -1546,6 +1591,8 @@ async function syncPerformanceSettings() {
       pausePolicy: currentPausePolicy,
       hardwareAccel: chkHardwareAccel.checked,
       inactiveBlackScreen: chkInactiveBlack ? chkInactiveBlack.checked : false,
+      inactiveBlur: chkInactiveBlur ? chkInactiveBlur.checked : false,
+      blurStrength: rngBlurStrength ? parseInt(rngBlurStrength.value, 10) : 32,
       restartOnResume: chkRestartOnResume ? chkRestartOnResume.checked : false,
       pausePerMonitor: pauseMode === 'individual',
       pauseDetectionMode: pauseMode,

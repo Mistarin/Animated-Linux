@@ -197,6 +197,84 @@ if os.path.isfile(qt_qml):
         with open(qt_qml, "w", encoding="utf-8") as f:
             f.write(content)
         print("[Installer] Injected fadeRect and restartOnResume into QtMultimedia.qml")
+
+# 4. Patch Smart Video Wallpaper Reborn if present
+reborn_sys = "/usr/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn"
+reborn_user = os.path.expanduser("~/.local/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn")
+if os.path.isdir(reborn_sys) and not os.path.isdir(reborn_user):
+    import shutil
+    shutil.copytree(reborn_sys, reborn_user)
+    print("[Installer] Copied Reborn plugin to user directory")
+
+if os.path.isdir(reborn_user):
+    reborn_xml = os.path.join(reborn_user, "contents/config/main.xml")
+    reborn_qml = os.path.join(reborn_user, "contents/ui/main.qml")
+    if os.path.isfile(reborn_xml):
+        with open(reborn_xml, "r", encoding="utf-8") as f:
+            xml_c = f.read()
+        x_changed = False
+        if "InactiveBlackScreen" not in xml_c:
+            xml_c = xml_c.replace("</group>", """    <entry name="InactiveBlackScreen" type="Bool">
+      <label>Fade to black when inactive or paused</label>
+      <default>false</default>
+    </entry>
+  </group>""")
+            x_changed = True
+        if "RestartOnResume" not in xml_c:
+            xml_c = xml_c.replace("</group>", """    <entry name="RestartOnResume" type="Bool">
+      <label>Restart video from beginning on resume</label>
+      <default>false</default>
+    </entry>
+  </group>""")
+            x_changed = True
+        if x_changed:
+            with open(reborn_xml, "w", encoding="utf-8") as f:
+                f.write(xml_c)
+            print("[Installer] Injected InactiveBlackScreen & RestartOnResume into Reborn main.xml")
+    if os.path.isfile(reborn_qml):
+        with open(reborn_qml, "r", encoding="utf-8") as f:
+            qml_c = f.read()
+        q_changed = False
+        if "inactiveBlackScreen" not in qml_c:
+            qml_c = qml_c.replace(
+                "property bool debugEnabled: main.configuration.DebugEnabled",
+                "property bool debugEnabled: main.configuration.DebugEnabled\\n    property bool inactiveBlackScreen: main.configuration.InactiveBlackScreen || false\\n    property bool restartOnResume: main.configuration.RestartOnResume || false"
+            )
+            q_changed = True
+        if "blackOverlay" not in qml_c:
+            overlay_qml = """            resumeLastVideo: main.configuration.ResumeLastVideo
+        }
+
+        Rectangle {
+            id: blackOverlay
+            anchors.fill: parent
+            color: "#000000"
+            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0
+            visible: opacity > 0.001 || (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0)
+            z: 99
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 350
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }"""
+            qml_c = qml_c.replace("            resumeLastVideo: main.configuration.ResumeLastVideo\\n        }", overlay_qml)
+            q_changed = True
+        if "player.player.position = 0" not in qml_c:
+            qml_c = qml_c.replace(
+                "player.pause();",
+                "player.pause();\\n            if (main.restartOnResume) {\\n                try {\\n                    player.player.position = 0;\\n                } catch(e) {}\\n            }"
+            )
+            qml_c = qml_c.replace(
+                "player.play();",
+                "if (main.restartOnResume) {\\n                try {\\n                    player.player.position = 0;\\n                } catch(e) {}\\n            }\\n            player.play();"
+            )
+            q_changed = True
+        if q_changed:
+            with open(reborn_qml, "w", encoding="utf-8") as f:
+                f.write(qml_c)
+            print("[Installer] Injected blackOverlay and restartOnResume into Reborn main.qml")
 PYEOF
 fi
 

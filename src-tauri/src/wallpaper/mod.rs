@@ -463,6 +463,8 @@ print(JSON.stringify(results));
         pause_policy: u32,
         hardware_accel: bool,
         inactive_black_screen: bool,
+        inactive_blur: Option<bool>,
+        blur_strength: Option<u32>,
         restart_on_resume: bool,
         pause_per_monitor: bool,
         pause_detection_mode: Option<String>,
@@ -476,6 +478,12 @@ print(JSON.stringify(results));
         settings.pause_policy = pause_policy;
         settings.hardware_accel = hardware_accel;
         settings.inactive_black_screen = inactive_black_screen;
+        if let Some(blur) = inactive_blur {
+            settings.inactive_blur = blur;
+        }
+        if let Some(strength) = blur_strength {
+            settings.blur_strength = strength.clamp(1, 64);
+        }
         settings.restart_on_resume = restart_on_resume;
         settings.pause_per_monitor = pause_per_monitor;
         if let Some(mode) = pause_detection_mode {
@@ -1004,5 +1012,28 @@ mod tests {
 
         let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
         assert!(deserialized.debug_enabled);
+    }
+
+    #[test]
+    fn test_inactive_blur_and_strength_persistence() {
+        let mut settings = PlaybackSettings::default();
+        assert!(!settings.inactive_blur);
+        assert_eq!(settings.blur_strength, 32);
+
+        settings.inactive_blur = true;
+        settings.blur_strength = 48;
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains("\"inactive_blur\":true"));
+        assert!(serialized.contains("\"blur_strength\":48"));
+
+        let deserialized: PlaybackSettings = serde_json::from_str(&serialized).unwrap();
+        assert!(deserialized.inactive_blur);
+        assert_eq!(deserialized.blur_strength, 48);
+
+        // Older JSON without blur keys defaults cleanly
+        let legacy_json = "{\"volume\":50,\"speed\":1.0}";
+        let legacy_settings: PlaybackSettings = serde_json::from_str(legacy_json).unwrap();
+        assert!(!legacy_settings.inactive_blur);
+        assert_eq!(legacy_settings.blur_strength, 32);
     }
 }

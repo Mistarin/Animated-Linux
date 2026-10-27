@@ -72,7 +72,7 @@ impl KdePlasmaBackend {
                     qml_changed = true;
                 }
                 if !qml.contains("blackOverlay") {
-                    let overlay_qml = "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }\n\n        Rectangle {\n            id: blackOverlay\n            anchors.fill: parent\n            color: \"#000000\"\n            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0\n            visible: opacity > 0.001\n            z: 99\n            Behavior on opacity {\n                NumberAnimation {\n                    duration: 350\n                    easing.type: Easing.InOutQuad\n                }\n            }\n        }";
+                    let overlay_qml = "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }\n\n        Rectangle {\n            id: blackOverlay\n            anchors.fill: parent\n            color: \"#000000\"\n            opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0\n            visible: main.inactiveBlackScreen && (!main.playing || opacity > 0.001)\n            z: 99\n            Behavior on opacity {\n                NumberAnimation {\n                    duration: 350\n                    easing.type: Easing.InOutQuad\n                }\n            }\n        }\n\n        Connections {\n            target: main\n            ignoreUnknownSignals: true\n            function onRestartOnResumeChanged() {\n                if (!main.playing && main.restartOnResume) {\n                    try { player.player.position = 0; } catch(e) {}\n                }\n            }\n        }";
                     qml = qml.replace(
                         "            resumeLastVideo: main.configuration.ResumeLastVideo\n        }",
                         overlay_qml,
@@ -202,9 +202,10 @@ impl WallpaperBackend for KdePlasmaBackend {
         let volume_val = (settings.volume as f64) / 100.0;
         let speed_val = settings.speed;
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
+        let blur_mode = if inactive_blur { 3 } else { 5 };
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
 
         // Plasma 6 Script to update wallpaper plugin on specified screen(s)
         // Smart Video Wallpaper Reborn requires VideoUrls to be a JSON array of video objects with "enabled": true
@@ -261,6 +262,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
         d.writeConfig("DebugEnabled", {debug_enabled});
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
@@ -280,6 +282,7 @@ print("Applied successfully to target " + target);
             check_active_screen = check_active_screen,
             debug_enabled = debug_enabled,
             inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
             restart_on_resume = restart_on_resume,
             blur_mode = blur_mode,
             blur_radius = blur_radius,
@@ -295,9 +298,10 @@ print("Applied successfully to target " + target);
     fn pause(&self, screen: Option<i32>, settings: &PlaybackSettings) -> Result<(), String> {
         let target_screen = screen.unwrap_or(-1);
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
+        let blur_mode = if inactive_blur { 3 } else { 5 };
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let script = format!(
             r#"
 var allDesktops = desktops();
@@ -307,6 +311,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
     if (target === -1 || d.screen === target) {{
         d.currentConfigGroup = Array("Wallpaper", "luisbocanegra.smart.video.wallpaper.reborn", "General");
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
@@ -317,6 +322,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
 "#,
             target_screen = target_screen,
             inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
             restart_on_resume = restart_on_resume,
             blur_mode = blur_mode,
             blur_radius = blur_radius
@@ -337,9 +343,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         let check_active_screen = settings.pause_detection_mode == "individual";
         let debug_enabled = settings.debug_enabled;
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
+        let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
         let restart_on_resume = settings.restart_on_resume;
-        let blur_mode = if settings.inactive_blur && !settings.inactive_black_screen { 3 } else { 5 };
-        let blur_radius = if settings.inactive_blur && !settings.inactive_black_screen { settings.blur_strength } else { 0 };
+        let blur_mode = if inactive_blur { 3 } else { 5 };
+        let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
 
         let restart_script = if settings.restart_on_resume {
             r#"
@@ -380,6 +387,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
 {restart_script}        d.writeConfig("CheckWindowsActiveScreen", {check_active_screen});
         d.writeConfig("DebugEnabled", {debug_enabled});
         d.writeConfig("InactiveBlackScreen", {inactive_black});
+        d.writeConfig("InactiveBlurScreen", {inactive_blur});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
@@ -393,6 +401,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             check_active_screen = check_active_screen,
             debug_enabled = debug_enabled,
             inactive_black = inactive_black,
+            inactive_blur = inactive_blur,
             restart_on_resume = restart_on_resume,
             blur_mode = blur_mode,
             blur_radius = blur_radius,

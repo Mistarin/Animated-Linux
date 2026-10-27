@@ -74,6 +74,13 @@ if os.path.isfile(main_xml):
     </entry>
   </group>""")
         changed = True
+    if "BlurMode" not in content:
+        content = content.replace("</group>", """    <entry name="BlurMode" type="Int">
+      <label>Blur mode (3: paused, 5: never)</label>
+      <default>5</default>
+    </entry>
+  </group>""")
+        changed = True
     if "BlurRadius" not in content:
         content = content.replace("</group>", """    <entry name="BlurRadius" type="Int">
       <label>Blur strength radius</label>
@@ -106,13 +113,49 @@ if os.path.isfile(main_qml):
         content = f.read()
     changed = False
     target_props = """property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
+    property int    blurMode: wallpaper.configuration.BlurMode !== undefined ? parseInt(wallpaper.configuration.BlurMode) : (wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true" ? 3 : 5)
     property bool   inactiveBlack: wallpaper.configuration.InactiveBlackScreen === true || wallpaper.configuration.InactiveBlackScreen === "true"
-    property bool   inactiveBlur: wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true"
+    property bool   inactiveBlur: (wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true" || blurMode === 3)
     property int    blurRadius: wallpaper.configuration.BlurRadius ? parseInt(wallpaper.configuration.BlurRadius) : 32
     property bool   restartOnResume: wallpaper.configuration.RestartOnResume === true || wallpaper.configuration.RestartOnResume === "true"
-    property bool   userPaused: wallpaper.configuration.UserPaused === true || wallpaper.configuration.UserPaused === "true" """
+    property bool   userPaused: wallpaper.configuration.UserPaused === true || wallpaper.configuration.UserPaused === "true"
 
-    if "inactiveBlur" not in content or "|| false" in content:
+    Connections {
+        target: wallpaper.configuration
+        ignoreUnknownSignals: true
+        function onValueChanged(key, value) {
+            if (key === "InactiveBlackScreen") {
+                background.inactiveBlack = (value === true || value === "true");
+            } else if (key === "InactiveBlurScreen") {
+                background.inactiveBlur = (value === true || value === "true");
+            } else if (key === "BlurMode") {
+                background.blurMode = parseInt(value);
+                background.inactiveBlur = (parseInt(value) === 3);
+            } else if (key === "BlurRadius") {
+                background.blurRadius = value ? parseInt(value) : 32;
+            } else if (key === "RestartOnResume") {
+                background.restartOnResume = (value === true || value === "true");
+            } else if (key === "UserPaused") {
+                background.userPaused = (value === true || value === "true");
+            }
+        }
+    }
+
+    Connections {
+        target: wallpaper
+        ignoreUnknownSignals: true
+        function onConfigurationChanged() {
+            background.inactiveBlack = (wallpaper.configuration.InactiveBlackScreen === true || wallpaper.configuration.InactiveBlackScreen === "true");
+            var bm = wallpaper.configuration.BlurMode !== undefined ? parseInt(wallpaper.configuration.BlurMode) : 5;
+            background.blurMode = bm;
+            background.inactiveBlur = (wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true" || bm === 3);
+            background.blurRadius = wallpaper.configuration.BlurRadius ? parseInt(wallpaper.configuration.BlurRadius) : 32;
+            background.restartOnResume = (wallpaper.configuration.RestartOnResume === true || wallpaper.configuration.RestartOnResume === "true");
+            background.userPaused = (wallpaper.configuration.UserPaused === true || wallpaper.configuration.UserPaused === "true");
+        }
+    }"""
+
+    if "onConfigurationChanged" not in content or "|| false" in content or "blurMode" not in content:
         import re
         content = re.sub(
             r'property int\s+pauseBatPercent:\s*wallpaper\.configuration\.PauseBatPercent[\s\S]*?(?=\s+property var|\s+// auto pause|\s+property string steamlibrary)',
@@ -124,6 +167,31 @@ if os.path.isfile(main_qml):
         content = content.replace(
             "property bool   ok: !windowModel.reqPause && !powerSource.reqPause",
             "property bool   ok: !windowModel.reqPause && !powerSource.reqPause && !userPaused"
+        )
+        changed = True
+    # Strip any obsolete imperative property assignments that break declarative QML bindings
+    if "onInactiveBlackChanged:" in content or "onInactiveBlurChanged:" in content:
+        import re
+        content = re.sub(r'onInactiveBlackChanged:\s*\{[\s\S]*?\}\s*', '', content)
+        content = re.sub(r'onInactiveBlurChanged:\s*\{[\s\S]*?\}\s*', '', content)
+        changed = True
+    if "onPerOptChangedChanged:" in content and "background.blurMode =" not in content:
+        import re
+        new_peropt = """    property bool   perOptChanged: wallpaper.configuration.PerOptChanged
+    onPerOptChangedChanged: {
+        background.inactiveBlack = (wallpaper.configuration.InactiveBlackScreen === true || wallpaper.configuration.InactiveBlackScreen === "true");
+        var bm = wallpaper.configuration.BlurMode !== undefined ? parseInt(wallpaper.configuration.BlurMode) : 5;
+        background.blurMode = bm;
+        background.inactiveBlur = (wallpaper.configuration.InactiveBlurScreen === true || wallpaper.configuration.InactiveBlurScreen === "true" || bm === 3);
+        background.blurRadius = wallpaper.configuration.BlurRadius ? parseInt(wallpaper.configuration.BlurRadius) : 32;
+        background.restartOnResume = (wallpaper.configuration.RestartOnResume === true || wallpaper.configuration.RestartOnResume === "true");
+        background.userPaused = (wallpaper.configuration.UserPaused === true || wallpaper.configuration.UserPaused === "true");
+        pyext.read_wallpaper_config(workshopid).then((res) => this.curOpt = res);
+    }"""
+        content = re.sub(
+            r'property bool\s+perOptChanged:\s*wallpaper\.configuration\.PerOptChanged\s*onPerOptChangedChanged:\s*\{[\s\S]*?\}',
+            new_peropt,
+            content
         )
         changed = True
     if "lauchPauseTimer.start();" in content:
@@ -151,6 +219,8 @@ Item{
     id: videoItem
     anchors.fill: parent
     property alias source: player.source
+    property alias fadeRect: fadeRect
+    property alias blurEffect: blurEffect
     readonly property int displayMode: background.displayMode
     readonly property real videoRate: background.speed
     readonly property bool stats: background.mpvStats
@@ -230,7 +300,7 @@ Item{
         anchors.fill: player
         source: player
         radius: (background.inactiveBlur && !background.ok) ? background.blurRadius : 0
-        visible: radius > 0.001
+        visible: background.inactiveBlur && (!background.ok || radius > 0.001)
         z: 998
         Behavior on radius {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
@@ -242,7 +312,7 @@ Item{
         anchors.fill: parent
         color: "#000000"
         opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0
-        visible: opacity > 0.001
+        visible: background.inactiveBlack && (!background.ok || opacity > 0.001)
         z: 999
         Behavior on opacity {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
@@ -314,6 +384,8 @@ Item{
     id: videoItem
     anchors.fill: parent
     property alias source: player.source
+    property alias fadeRect: fadeRect
+    property alias blurEffect: blurEffect
     property int displayMode: background.displayMode
     property bool primed: false
 
@@ -391,7 +463,7 @@ Item{
         anchors.fill: videoView
         source: videoView
         radius: (background.inactiveBlur && !background.ok) ? background.blurRadius : 0
-        visible: radius > 0.001
+        visible: background.inactiveBlur && (!background.ok || radius > 0.001)
         z: 998
         Behavior on radius {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
@@ -403,7 +475,7 @@ Item{
         anchors.fill: parent
         color: "#000000"
         opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0
-        visible: opacity > 0.001
+        visible: background.inactiveBlack && (!background.ok || opacity > 0.001)
         z: 999
         Behavior on opacity {
             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
@@ -520,7 +592,7 @@ if os.path.isdir(reborn_user):
             anchors.fill: parent
             color: "#000000"
             opacity: (main.inactiveBlackScreen && !main.playing && main.videosConfig.length > 0) ? 1.0 : 0.0
-            visible: opacity > 0.001
+            visible: main.inactiveBlackScreen && (!main.playing || opacity > 0.001)
             z: 99
             Behavior on opacity {
                 NumberAnimation {
@@ -528,8 +600,24 @@ if os.path.isdir(reborn_user):
                     easing.type: Easing.InOutQuad
                 }
             }
+        }
+
+        Connections {
+            target: main
+            ignoreUnknownSignals: true
+            function onRestartOnResumeChanged() {
+                if (!main.playing && main.restartOnResume) {
+                    try { player.player.position = 0; } catch(e) {}
+                }
+            }
         }"""
             qml_c = qml_c.replace("            resumeLastVideo: main.configuration.ResumeLastVideo\\n        }", overlay_qml)
+            q_changed = True
+        elif "visible: opacity > 0.001" in qml_c:
+            qml_c = qml_c.replace(
+                "visible: opacity > 0.001",
+                "visible: main.inactiveBlackScreen && (!main.playing || opacity > 0.001)"
+            )
             q_changed = True
         if "player.player.position = 0" not in qml_c:
             qml_c = qml_c.replace(

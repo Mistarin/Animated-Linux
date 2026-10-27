@@ -231,12 +231,56 @@ Window {{
                 stepTimer.interval = 500;
                 stepTimer.start();
             }} else if (currentStep === 19) {{
+                // Toggle black OFF while currently in black state
                 background.inactiveBlack = false;
                 stepTimer.interval = 500;
                 stepTimer.start();
             }} else if (currentStep === 20) {{
                 grab("{backend_name}_paused_restored_static", 150);
             }} else if (currentStep === 21) {{
+                // Toggle restart animation ON while paused with black OFF
+                background.restartOnResume = true;
+                stepTimer.interval = 400;
+                stepTimer.start();
+            }} else if (currentStep === 22) {{
+                grab("{backend_name}_paused_restored_frame0", 150);
+            }} else if (currentStep === 23) {{
+                // Toggle restart animation OFF while paused with black OFF
+                background.restartOnResume = false;
+                stepTimer.interval = 400;
+                stepTimer.start();
+            }} else if (currentStep === 24) {{
+                grab("{backend_name}_paused_restored_restart_off", 150);
+            }} else if (currentStep === 25) {{
+                // 10. Dynamic Blur Cycle: Toggle blur ON while paused
+                background.inactiveBlur = true;
+                background.blurRadius = 32;
+                stepTimer.interval = 400;
+                stepTimer.start();
+            }} else if (currentStep === 26) {{
+                grab("{backend_name}_paused_restored_blur", 150);
+            }} else if (currentStep === 27) {{
+                // 11. Dynamic Blur Cycle: Toggle blur OFF while paused (MUST instantly restore static frame)
+                background.inactiveBlur = false;
+                stepTimer.interval = 350;
+                stepTimer.start();
+            }} else if (currentStep === 28) {{
+                grab("{backend_name}_paused_restored_unblur", 150);
+            }} else if (currentStep === 29) {{
+                // 12. Dynamic Blur Cycle: Re-toggle blur ON to guarantee declarative binding was NOT destroyed
+                background.inactiveBlur = true;
+                stepTimer.interval = 400;
+                stepTimer.start();
+            }} else if (currentStep === 30) {{
+                grab("{backend_name}_paused_re_blur", 150);
+            }} else if (currentStep === 31) {{
+                // 13. Dynamic Blur Cycle: Final toggle OFF
+                background.inactiveBlur = false;
+                stepTimer.interval = 350;
+                stepTimer.start();
+            }} else if (currentStep === 32) {{
+                grab("{backend_name}_paused_final_static", 150);
+            }} else if (currentStep === 33) {{
                 Qt.quit();
             }}
         }}
@@ -256,7 +300,7 @@ Window {{
                 env=env,
                 capture_output=True,
                 text=True,
-                timeout=25
+                timeout=35
             )
         except subprocess.TimeoutExpired:
             log_fail("QML harness execution timed out")
@@ -380,6 +424,62 @@ Window {{
             log_pass(f"{backend_name} Dynamic Toggle OFF Immediately Restores Static Frame", f"Diff={restore_diff:.4f}")
         else:
             log_fail(f"{backend_name} Dynamic Toggle Failed", f"Diff={restore_diff:.4f}")
+            success = False
+
+    # 8. Dynamic Toggle Restart Animation ON while Paused (Black OFF)
+    f_res_f0 = os.path.join(FRAMES_DIR, f"{backend_name}_paused_restored_frame0.png")
+    if os.path.exists(f_res_f0):
+        d_res_f0 = analyze_frame(f_res_f0)
+        if d_res_f0["mean_brightness"] > 10.0 and d_res_f0["max_pixel"] > 40.0:
+            log_pass(f"{backend_name} Toggling Restart ON Renders Frame 0:00 (NOT Black)", f"Brightness={d_res_f0['mean_brightness']:.1f}")
+        else:
+            log_fail(f"{backend_name} Toggling Restart ON Stalled Black", f"Brightness={d_res_f0['mean_brightness']:.1f}")
+            success = False
+
+    # 9. Dynamic Toggle Restart Animation OFF while Paused (Black OFF)
+    f_res_off = os.path.join(FRAMES_DIR, f"{backend_name}_paused_restored_restart_off.png")
+    if os.path.exists(f_res_off):
+        d_res_off = analyze_frame(f_res_off)
+        if d_res_off["mean_brightness"] > 10.0 and d_res_off["max_pixel"] > 40.0:
+            log_pass(f"{backend_name} Toggling Restart OFF Remains Static Video Frame (NOT Black)", f"Brightness={d_res_off['mean_brightness']:.1f}")
+        else:
+            log_fail(f"{backend_name} Toggling Restart OFF Stalled Black", f"Brightness={d_res_off['mean_brightness']:.1f}")
+            success = False
+
+    # 10. Dynamic Blur Cycle: Toggle Blur ON while Paused
+    f_res_blur = os.path.join(FRAMES_DIR, f"{backend_name}_paused_restored_blur.png")
+    if os.path.exists(f_res_blur) and os.path.exists(f_st1):
+        d_res_blur = analyze_frame(f_res_blur)
+        d_st1 = analyze_frame(f_st1)
+        blur_ratio = d_res_blur["sharpness"] / (d_st1["sharpness"] + 1e-5)
+        if d_res_blur["mean_brightness"] > 10.0 and blur_ratio < 0.20:
+            log_pass(f"{backend_name} Dynamic Toggle Blur ON Softens Paused Video Frame", f"Sharpness ratio={blur_ratio:.4f}")
+        else:
+            log_fail(f"{backend_name} Dynamic Toggle Blur ON Failed", f"Sharpness ratio={blur_ratio:.4f}")
+            success = False
+
+    # 11. Dynamic Blur Cycle: Toggle Blur OFF while Paused (Instant 0ms restoration)
+    f_unblur = os.path.join(FRAMES_DIR, f"{backend_name}_paused_restored_unblur.png")
+    if os.path.exists(f_unblur) and os.path.exists(f_res_off):
+        d_unblur = analyze_frame(f_unblur)
+        d_res_off = analyze_frame(f_res_off)
+        unblur_diff = compute_frame_diff(d_unblur["arr"], d_res_off["arr"])
+        if unblur_diff < 0.01 and d_unblur["mean_brightness"] > 10.0:
+            log_pass(f"{backend_name} Dynamic Toggle Blur OFF Immediately Restores Static Frame", f"Diff={unblur_diff:.4f}")
+        else:
+            log_fail(f"{backend_name} Dynamic Toggle Blur OFF Failed", f"Diff={unblur_diff:.4f}")
+            success = False
+
+    # 12. Dynamic Blur Cycle: Re-toggle Blur ON (Binding Survival Check)
+    f_reblur = os.path.join(FRAMES_DIR, f"{backend_name}_paused_re_blur.png")
+    if os.path.exists(f_reblur) and os.path.exists(f_st1):
+        d_reblur = analyze_frame(f_reblur)
+        d_st1 = analyze_frame(f_st1)
+        reblur_ratio = d_reblur["sharpness"] / (d_st1["sharpness"] + 1e-5)
+        if d_reblur["mean_brightness"] > 10.0 and reblur_ratio < 0.20:
+            log_pass(f"{backend_name} Declarative Blur Binding Preserved Across Repeated Toggles", f"Sharpness ratio={reblur_ratio:.4f}")
+        else:
+            log_fail(f"{backend_name} Declarative Blur Binding Corrupted by Toggles", f"Sharpness ratio={reblur_ratio:.4f}")
             success = False
 
     return success

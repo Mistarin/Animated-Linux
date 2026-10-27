@@ -143,25 +143,44 @@ Rectangle {
 - The underlying QtMultimedia player stays loaded, alive, and ready to render the first frame immediately upon resumption.
 
 ### 6.2 Inactive Fade-to-Blur (`FastBlur`)
-Smart Video Wallpaper Reborn natively contains a `FastBlur` element (`mainBlur`) layered over the video background:
+Both the native KDE MPV plugin (`com.github.catsout.wallpaperEngineKde`) and Smart Video Wallpaper Reborn (`luisbocanegra.smart.video.wallpaper.reborn`) implement hardware-accelerated `FastBlur` layered over the video player:
 
-- The blur activation is governed by configuration key `BlurMode`.
-- In Reborn's QML enum, `BlurMode = 3` corresponds to `Enum.BlurMode.VideoPaused`, triggering whenever `!main.playing` evaluates to true.
-- Configuration key `BlurRadius` controls the blur strength (1 to 64 px).
-- Reborn provides a native 300ms transition animation on `mainBlur.radius`.
-- When "Fade to blur" is enabled:
-  - `BlurMode` is set to `3`.
-  - `BlurRadius` is set to `settings.blur_strength` (default: 32).
-- When "Fade to blur" is disabled:
-  - `BlurMode` is set to `5` (`Enum.BlurMode.Never`).
-  - `BlurRadius` is set to `0`.
+1. **Dual-Compatibility Configuration Protocol**:
+   - `BlurMode`: Plasma enum where `3` corresponds to `Enum.BlurMode.VideoPaused` (triggering on pause/occlusion) and `5` corresponds to `Enum.BlurMode.Never`.
+   - `InactiveBlurScreen`: Boolean flag (`true` when blur is enabled, `false` when disabled).
+   - `BlurRadius`: Blur radius strength in pixels (`1` to `64`, default `32`).
+   - Both backends (`kde_mpv.rs` and `kde_plasma.rs`) write both `BlurMode` and `InactiveBlurScreen` simultaneously across `apply()`, `pause()`, and `resume()`, ensuring 100% interoperability across plugins.
+
+2. **Declarative Visibility Gate Architecture**:
+   In `Mpv.qml` and `QtMultimedia.qml`:
+   ```qml
+   FastBlur {
+       id: blurEffect
+       anchors.fill: player
+       source: player
+       radius: (background.inactiveBlur && !background.ok) ? background.blurRadius : 0
+       visible: background.inactiveBlur && (!background.ok || radius > 0.001)
+       z: 998
+       Behavior on radius {
+           NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+       }
+   }
+   ```
+   - **Toggling Blur OFF While Paused**: `background.inactiveBlur` immediately becomes `false`. Because `visible` checks `background.inactiveBlur && ...`, `visible` evaluates to `false` instantly with 0ms delay, restoring the crisp static video frame without requiring a delayed unblur animation.
+   - **Resuming Playback (`background.ok = true`)**: `background.inactiveBlur` remains `true` while `radius` animates smoothly down to `0` over 350ms. Because `radius > 0.001` remains `true` during the animation, `visible` stays `true` until the blur fully softens back into crisp active video.
+   - **Toggling Blur ON While Paused**: `background.inactiveBlur` becomes `true`, `visible` immediately becomes `true`, and `radius` smoothly transitions from `0` up to `blurRadius`.
+
+3. **Strict Prohibition of Imperative Property Assignments**:
+   - Assigning `blurEffect.radius = 0` or `fadeRect.opacity = 0.0` imperatively in QML property change handlers (e.g. `onInactiveBlurChanged`) permanently destroys the declarative QML binding expression in the Qt Quick scene graph.
+   - Once an imperative assignment executes, subsequent toggles of `background.inactiveBlur` fail to update `radius`.
+   - All state transitions must rely strictly on declarative property bindings and hardware visibility gates.
 
 ### 6.3 Mutual Exclusivity and Fallback Operation
 Fade-to-Black and Fade-to-Blur are mutually exclusive options in the UI and backend settings:
 - **Mutual Exclusivity**: Turning one effect on automatically disables the other in the switches/UI and engine configuration.
-- **Blur only**: The video smoothly softens into a frosted glass background when covered or paused.
-- **Black only**: The video smoothly darkens to pure black when covered or paused.
-- **Neither (Default)**: The video crisply pauses and holds the current frame, displaying a crisp static image of the video without any black or blur overlay.
+- **Blur only**: The video smoothly softens into a frosted glass background when covered or paused (`BlurMode: 3`, `InactiveBlurScreen: true`, `InactiveBlackScreen: false`).
+- **Black only**: The video smoothly darkens to pure black when covered or paused (`BlurMode: 5`, `InactiveBlurScreen: false`, `InactiveBlackScreen: true`).
+- **Neither (Default)**: The video crisply pauses and holds the current frame, displaying a crisp static image of the video without any black or blur overlay (`BlurMode: 5`, `InactiveBlurScreen: false`, `InactiveBlackScreen: false`).
 
 ---
 
@@ -243,8 +262,29 @@ To support the feature "Restart animation from beginning on resume" consistently
    ```
    Toggling "Restart animation" ON while paused immediately seeks to frame 0:00, updating the displayed static video frame. Toggling it OFF allows the static frame to remain at the current video position.
 
-4. **When Toggling "Fade to Black" While Already Paused**:
-   The declarative hardware overlay `opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0` updates instantly. When toggled OFF, `opacity` becomes `0.0`, immediately revealing the underlying primed static video frame without requiring a player reload.
+4. **When Toggling "Fade to Black" While Already Paused (Root Cause & Hardware Visibility Gate)**:
+   - **The Historical Defect**: Previously, the overlay defined visibility purely as `visible: opacity > 0.001`. If the desktop was currently inactive and black (`opacity = 1.0`), toggling "Fade to black" OFF in the UI caused `background.inactiveBlack` to become `false`. However, because Qt Quick scene graph animations are throttled or suspended while displays/containments are inactive or occluded behind windows, the `NumberAnimation` on `opacity` did not advance or was delayed. Because `visible` only checked `opacity > 0.001` without checking `inactiveBlack`, the overlay remained opaque black, failing to reveal the underlying static video frame.
+   - **Declarative Gate Architecture**:
+     ```qml
+     Rectangle {
+         id: fadeRect
+         anchors.fill: parent
+         color: "#000000"
+         opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0
+         visible: background.inactiveBlack && (!background.ok || opacity > 0.001)
+         z: 999
+         Behavior on opacity {
+             NumberAnimation { duration: 350; easing.type: Easing.InOutQuad }
+         }
+     }
+     ```
+     - When toggled OFF while already black: `background.inactiveBlack` becomes `false`. `visible` evaluates to `false` immediately and deterministically, vanishing the black screen with 0ms delay without destroying declarative bindings.
+     - When resuming active playback (`background.ok = true`): `background.inactiveBlack` remains `true` while `opacity` animates smoothly from 1.0 down to 0.0 over 350ms, preserving the smooth visual fade-out.
+   - **KDE Plasma D-Bus Configuration Reactivity**:
+     `d.writeConfig` modifies settings on disk, but `KConfigPropertyMap` does not emit implicit signals for compound JavaScript expressions. To guarantee immediate propagation into `main.qml`:
+     1. `kde_mpv.rs` toggles `PerOptChanged` (`d.writeConfig("PerOptChanged", !d.readConfig("PerOptChanged"))`) on every configuration write.
+     2. `main.qml` explicitly binds `onPerOptChangedChanged`, `wallpaper.configuration.onValueChanged`, and `wallpaper.onConfigurationChanged` to synchronize `inactiveBlack`, `inactiveBlur`, `blurRadius`, `restartOnResume`, and `userPaused`.
+     3. The underlying video player texture is already primed and statically holding either the pause frame (if `restartOnResume` is OFF) or frame 0:00 (if `restartOnResume` is ON). Toggling "Restart animation" while paused dynamically seeks and updates the static frame.
 
 ---
 

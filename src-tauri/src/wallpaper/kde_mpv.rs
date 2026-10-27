@@ -87,6 +87,7 @@ impl WallpaperBackend for KdePlasmaMpvBackend {
         let speed = settings.speed;
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_mode = if inactive_blur { 3 } else { 5 };
         let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let restart_on_resume = settings.restart_on_resume;
         let is_paused = settings.is_paused;
@@ -124,10 +125,12 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("Speed", {speed});
         d.writeConfig("InactiveBlackScreen", {inactive_black});
         d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("MpvHwdec", "auto-safe");
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("UserPaused", {is_paused});
+        d.writeConfig("PerOptChanged", !d.readConfig("PerOptChanged"));
         d.reloadConfig();
     }}
 }}
@@ -146,6 +149,7 @@ print("Applied MPV wallpaper to target " + target);
             speed = speed,
             inactive_black = inactive_black,
             inactive_blur = inactive_blur,
+            blur_mode = blur_mode,
             blur_radius = blur_radius,
             restart_on_resume = restart_on_resume,
             is_paused = is_paused,
@@ -159,6 +163,7 @@ print("Applied MPV wallpaper to target " + target);
         let target_screen = screen.unwrap_or(-1);
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_mode = if inactive_blur { 3 } else { 5 };
         let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let script = format!(
             r#"
@@ -170,8 +175,10 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.currentConfigGroup = Array("Wallpaper", "com.github.catsout.wallpaperEngineKde", "General");
         d.writeConfig("InactiveBlackScreen", {inactive_black});
         d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("UserPaused", true);
+        d.writeConfig("PerOptChanged", !d.readConfig("PerOptChanged"));
         d.reloadConfig();
     }}
 }}
@@ -179,6 +186,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             target_screen = target_screen,
             inactive_black = inactive_black,
             inactive_blur = inactive_blur,
+            blur_mode = blur_mode,
             blur_radius = blur_radius
         );
         Self::run_plasma_script(&script)?;
@@ -200,6 +208,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         let main_screen = settings.main_display_id;
         let inactive_black = settings.inactive_black_screen && !settings.inactive_blur;
         let inactive_blur = settings.inactive_blur && !settings.inactive_black_screen;
+        let blur_mode = if inactive_blur { 3 } else { 5 };
         let blur_radius = if inactive_blur { settings.blur_strength } else { 0 };
         let restart_on_resume = settings.restart_on_resume;
         let speed = settings.speed;
@@ -235,6 +244,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         }}
         d.writeConfig("InactiveBlackScreen", {inactive_black});
         d.writeConfig("InactiveBlurScreen", {inactive_blur});
+        d.writeConfig("BlurMode", {blur_mode});
         d.writeConfig("BlurRadius", {blur_radius});
         d.writeConfig("RestartOnResume", {restart_on_resume});
         d.writeConfig("PauseMode", {pause_mode});
@@ -248,6 +258,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
         d.writeConfig("PauseOnBatPower", {pause_on_bat});
         d.writeConfig("Speed", {speed});
         d.writeConfig("UserPaused", false);
+        d.writeConfig("PerOptChanged", !d.readConfig("PerOptChanged"));
         d.reloadConfig();
     }}
 }}
@@ -261,6 +272,7 @@ for (var i = 0; i < allDesktops.length; i++) {{
             speed = speed,
             inactive_black = inactive_black,
             inactive_blur = inactive_blur,
+            blur_mode = blur_mode,
             blur_radius = blur_radius,
             restart_on_resume = restart_on_resume,
         );

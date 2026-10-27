@@ -132,7 +132,7 @@ Window {{
         property bool inactiveBlack: false
         property bool inactiveBlur: false
         property int blurRadius: 32
-        property bool ok: true
+        property bool ok: false // Starts paused to verify initial static frame priming!
         signal sig_backendFirstFrame(string backname)
     }}
 
@@ -142,7 +142,6 @@ Window {{
         source: "{backend_abs_path}"
         onLoaded: {{
             loader.item.source = "{video_path}";
-            loader.item.play();
             stepTimer.interval = 800;
             stepTimer.start();
         }}
@@ -166,60 +165,78 @@ Window {{
         onTriggered: {{
             currentStep++;
             if (currentStep === 1) {{
-                grab("{backend_name}_act1", 250);
+                // 1. Initial load while paused (MUST NOT BE BLACK, MUST BE STATIC VIDEO FRAME)
+                grab("{backend_name}_init_paused_not_black", 150);
             }} else if (currentStep === 2) {{
-                grab("{backend_name}_act2", 150);
+                // 2. Toggle restart animation ON while paused -> static frame updates to 0:00 (MUST NOT BE BLACK)
+                background.restartOnResume = true;
+                stepTimer.interval = 400;
+                stepTimer.start();
             }} else if (currentStep === 3) {{
+                grab("{backend_name}_paused_restart_on", 150);
+            }} else if (currentStep === 4) {{
+                // 3. Resume active playback
+                background.ok = true;
+                loader.item.play();
+                stepTimer.interval = 400;
+                stepTimer.start();
+            }} else if (currentStep === 5) {{
+                grab("{backend_name}_act1", 250);
+            }} else if (currentStep === 6) {{
+                grab("{backend_name}_act2", 150);
+            }} else if (currentStep === 7) {{
                 background.inactiveBlack = true;
                 stepTimer.interval = 250;
                 stepTimer.start();
-            }} else if (currentStep === 4) {{
+            }} else if (currentStep === 8) {{
                 grab("{backend_name}_act_black_on", 150);
-            }} else if (currentStep === 5) {{
+            }} else if (currentStep === 9) {{
                 background.inactiveBlack = false;
                 background.inactiveBlur = true;
                 stepTimer.interval = 250;
                 stepTimer.start();
-            }} else if (currentStep === 6) {{
+            }} else if (currentStep === 10) {{
                 grab("{backend_name}_act_blur_on", 150);
-            }} else if (currentStep === 7) {{
+            }} else if (currentStep === 11) {{
+                // 4. Pause with restartOnResume = false (holding current frame)
+                background.restartOnResume = false;
                 background.inactiveBlack = false;
                 background.inactiveBlur = false;
                 background.ok = false;
                 loader.item.pause();
                 stepTimer.interval = 500;
                 stepTimer.start();
-            }} else if (currentStep === 8) {{
+            }} else if (currentStep === 12) {{
                 grab("{backend_name}_paused_static1", 300);
-            }} else if (currentStep === 9) {{
+            }} else if (currentStep === 13) {{
                 grab("{backend_name}_paused_static2", 150);
-            }} else if (currentStep === 10) {{
+            }} else if (currentStep === 14) {{
                 background.inactiveBlack = true;
                 background.inactiveBlur = false;
                 stepTimer.interval = 500;
                 stepTimer.start();
-            }} else if (currentStep === 11) {{
+            }} else if (currentStep === 15) {{
                 grab("{backend_name}_paused_black", 150);
-            }} else if (currentStep === 12) {{
+            }} else if (currentStep === 16) {{
                 background.inactiveBlack = false;
                 background.inactiveBlur = true;
                 background.blurRadius = 32;
                 stepTimer.interval = 500;
                 stepTimer.start();
-            }} else if (currentStep === 13) {{
+            }} else if (currentStep === 17) {{
                 grab("{backend_name}_paused_blur", 150);
-            }} else if (currentStep === 14) {{
+            }} else if (currentStep === 18) {{
                 background.inactiveBlur = false;
                 background.inactiveBlack = true;
                 stepTimer.interval = 500;
                 stepTimer.start();
-            }} else if (currentStep === 15) {{
+            }} else if (currentStep === 19) {{
                 background.inactiveBlack = false;
                 stepTimer.interval = 500;
                 stepTimer.start();
-            }} else if (currentStep === 16) {{
+            }} else if (currentStep === 20) {{
                 grab("{backend_name}_paused_restored_static", 150);
-            }} else if (currentStep === 17) {{
+            }} else if (currentStep === 21) {{
                 Qt.quit();
             }}
         }}
@@ -247,7 +264,33 @@ Window {{
 
     success = True
 
-    # 1. Active Playback Motion Check
+    # 1. Initial Paused Load Check (The Core "Initial Black Screen" Trap)
+    f_init = os.path.join(FRAMES_DIR, f"{backend_name}_init_paused_not_black.png")
+    if os.path.exists(f_init):
+        d_init = analyze_frame(f_init)
+        if d_init["max_pixel"] > 40.0 and d_init["mean_brightness"] > 10.0:
+            log_pass(f"{backend_name} Initial Paused Load Renders Static Video (NOT Black)", f"Brightness={d_init['mean_brightness']:.1f}, Max={d_init['max_pixel']}")
+        else:
+            log_fail(f"{backend_name} Initial Paused Load Stalled on Black Frame", f"Brightness={d_init['mean_brightness']:.1f}")
+            success = False
+    else:
+        log_fail("Initial paused frame missing")
+        success = False
+
+    # 2. Paused State with RestartOnResume=true Check
+    f_re_on = os.path.join(FRAMES_DIR, f"{backend_name}_paused_restart_on.png")
+    if os.path.exists(f_re_on):
+        d_re_on = analyze_frame(f_re_on)
+        if d_re_on["max_pixel"] > 40.0 and d_re_on["mean_brightness"] > 10.0:
+            log_pass(f"{backend_name} Paused State with Restart Animation Renders Frame 0:00 (NOT Black)", f"Brightness={d_re_on['mean_brightness']:.1f}")
+        else:
+            log_fail(f"{backend_name} Paused State with Restart Animation Erroneously Black", f"Brightness={d_re_on['mean_brightness']:.1f}")
+            success = False
+    else:
+        log_fail("Paused restart frame missing")
+        success = False
+
+    # 3. Active Playback Motion Check
     f_act1 = os.path.join(FRAMES_DIR, f"{backend_name}_act1.png")
     f_act2 = os.path.join(FRAMES_DIR, f"{backend_name}_act2.png")
     if os.path.exists(f_act1) and os.path.exists(f_act2):

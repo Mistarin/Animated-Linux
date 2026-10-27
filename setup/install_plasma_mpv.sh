@@ -126,6 +126,12 @@ if os.path.isfile(main_qml):
             "property bool   ok: !windowModel.reqPause && !powerSource.reqPause && !userPaused"
         )
         changed = True
+    if "lauchPauseTimer.start();" in content:
+        content = content.replace("lauchPauseTimer.start();", "background.autoPause();")
+        content = content.replace("function autoPause() {\n        background.ok", "function autoPause() {\n        if (!backendLoader.item) return;\n        background.ok")
+        import re
+        content = re.sub(r'// lauch pause time to avoid freezing[\s\S]*?// lauch pause end', '', content)
+        changed = True
     if changed:
         with open(main_qml, "w", encoding="utf-8") as f:
             f.write(content)
@@ -135,25 +141,91 @@ if os.path.isfile(main_qml):
 if os.path.isfile(mpv_qml):
     with open(mpv_qml, "r", encoding="utf-8") as f:
         content = f.read()
-    changed = False
 
-    if "Qt5Compat.GraphicalEffects" not in content:
-        content = content.replace("import QtQuick 2.5", "import QtQuick 2.15\nimport Qt5Compat.GraphicalEffects")
-        changed = True
+    mpv_full_content = '''import QtQuick 2.15
+import Qt5Compat.GraphicalEffects
+import com.github.catsout.wallpaperEngineKde 1.2
+import ".."
 
-    # Strip legacy imperative opacity overrides
-    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }\n", "")
-    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }\n", "")
-    content = content.replace("        if (background.inactiveBlack && !background.ok) {\n            fadeRect.opacity = 1.0;\n        } else {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+Item{
+    id: videoItem
+    anchors.fill: parent
+    property alias source: player.source
+    readonly property int displayMode: background.displayMode
+    readonly property real videoRate: background.speed
+    readonly property bool stats: background.mpvStats
+    property bool primed: false
 
-    if 'seek", "0", "absolute"' not in content:
-        content = content.replace(
-            "function play(){\n        // stop pause time",
-            "function play(){\n        // stop pause time\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.command([\"seek\", \"0\", \"absolute\"]);\n        }"
-        )
-        changed = True
+    property var volumeFade: Common.createVolumeFade(
+        videoItem, 
+        Qt.binding(function() { return (background.mute || !background.ok) ? 0 : background.volume; }),
+        (volume) => { player.volume = volume; }
+    )
+    
+    onDisplayModeChanged: {
+        if(videoItem.displayMode == Common.DisplayMode.Crop) {
+            player.setProperty("keepaspect", true);
+            player.setProperty("panscan", 1.0);
+        } else if(videoItem.displayMode == Common.DisplayMode.Aspect) {
+            player.setProperty("keepaspect", true);
+            player.setProperty("panscan", 0.0);
+        } else if(videoItem.displayMode == Common.DisplayMode.Scale) {
+            player.setProperty("keepaspect", false);
+            player.setProperty("panscan", 0.0);
+        }
+    }
 
-    effects_block = """    FastBlur {
+    onStatsChanged: {
+        player.command(["script-binding","stats/display-stats-toggle"]);
+    }
+
+    onVideoRateChanged: player.setProperty('speed', videoRate);
+
+    onSourceChanged: {
+        if (source && source.toString().length > 0) {
+            primed = false;
+            player.play();
+            primeSafetyTimer.start();
+        }
+    }
+
+    Timer {
+        id: primeSafetyTimer
+        interval: 800
+        repeat: false
+        running: false
+        onTriggered: {
+            if (!background.ok) {
+                player.pause();
+                if (background.restartOnResume) {
+                    player.command(["seek", "0", "absolute"]);
+                }
+            }
+        }
+    }
+
+    Mpv {
+        id: player
+        anchors.fill: parent
+        mute: background.mute || !background.ok
+        volume: 0
+        Connections {
+            ignoreUnknownSignals: true
+            function onFirstFrame() {
+                videoItem.primed = true;
+                primeSafetyTimer.stop();
+                background.sig_backendFirstFrame('mpv');
+                if (!background.ok) {
+                    player.pause();
+                    if (background.restartOnResume) {
+                        player.command(["seek", "0", "absolute"]);
+                    }
+                }
+            }
+        }
+    }
+
+    FastBlur {
         id: blurEffect
         anchors.fill: player
         source: player
@@ -177,42 +249,144 @@ if os.path.isfile(mpv_qml):
         }
     }
 
-    Component.onCompleted:{"""
+    Component.onCompleted:{
+        background.nowBackend = 'mpv';
+        videoItem.displayModeChanged();
+        if (source && source.toString().length > 0) {
+            player.play();
+            primeSafetyTimer.start();
+        }
+    }
 
-    if "blurEffect" not in content:
-        import re
-        if "Rectangle {\n        id: fadeRect" in content:
-            content = re.sub(r'Rectangle\s*\{\s*id:\s*fadeRect[\s\S]*?Component\.onCompleted\s*:\s*\{', effects_block, content)
-        elif "Component.onCompleted:{" in content:
-            content = content.replace("Component.onCompleted:{", effects_block)
-        changed = True
+    function play(){
+        pauseTimer.stop();
+        if (background.restartOnResume) {
+            player.command(["seek", "0", "absolute"]);
+        }
+        player.play();
+        volumeFade.start();
+    }
 
+    function pause(){
+        volumeFade.stop();
+        pauseTimer.start();
+    }
+
+    Timer{
+        id: pauseTimer
+        running: false
+        repeat: false
+        interval: 150
+        onTriggered: {
+            player.pause();
+            if (background.restartOnResume) {
+                player.command(["seek", "0", "absolute"]);
+            }
+        }
+    }
+
+    Connections {
+        target: background
+        ignoreUnknownSignals: true
+        function onRestartOnResumeChanged() {
+            if (!background.ok && background.restartOnResume) {
+                player.command(["seek", "0", "absolute"]);
+            }
+        }
+    }
+
+    function getMouseTarget() {
+    }
+}
+'''
     with open(mpv_qml, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("[Installer] Injected FastBlur and declarative fadeRect into Mpv.qml")
+        f.write(mpv_full_content)
+    print("[Installer] Injected FastBlur, frame priming, and declarative fadeRect into Mpv.qml")
 
 # 4. Patch QtMultimedia.qml
 if os.path.isfile(qt_qml):
-    with open(qt_qml, "r", encoding="utf-8") as f:
-        content = f.read()
-    changed = False
+    qt_full_content = '''import QtQuick 2.15
+import Qt5Compat.GraphicalEffects
+import QtMultimedia
+import ".."
 
-    if "Qt5Compat.GraphicalEffects" not in content:
-        content = content.replace("import QtQuick 2.5", "import QtQuick 2.15\nimport Qt5Compat.GraphicalEffects")
-        changed = True
+Item{
+    id: videoItem
+    anchors.fill: parent
+    property alias source: player.source
+    property int displayMode: background.displayMode
+    property bool primed: false
 
-    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 0.0;\n        }\n", "")
-    content = content.replace("        if (background.inactiveBlack) {\n            fadeRect.opacity = 1.0;\n        }\n", "")
-    content = content.replace("        if (background.inactiveBlack && !background.ok) {\n            fadeRect.opacity = 1.0;\n        } else {\n            fadeRect.opacity = 0.0;\n        }\n", "")
+    property var volumeFade: Common.createVolumeFade(
+        videoItem, 
+        Qt.binding(function() { return (background.mute || !background.ok) ? 0 : background.volume; }),
+        (volume) => { audioOut.volume = volume / 100.0; }
+    )
 
-    if "player.position = 0;" not in content:
-        content = content.replace(
-            "function play(){\n        pauseTimer.stop();",
-            "function play(){\n        pauseTimer.stop();\n        if (background.restartOnResume) {\n            player.position = 0;\n        }"
-        )
-        changed = True
+    onDisplayModeChanged: {
+        if(displayMode == Common.DisplayMode.Scale)
+            videoView.fillMode = VideoOutput.Stretch;
+        else if(displayMode == Common.DisplayMode.Aspect)
+            videoView.fillMode = VideoOutput.PreserveAspectFit;
+        else if(displayMode == Common.DisplayMode.Crop)
+            videoView.fillMode = VideoOutput.PreserveAspectCrop;
+    }
 
-    qt_effects_block = """    FastBlur {
+    onSourceChanged: {
+        if (source && source.toString().length > 0) {
+            primed = false;
+            player.play();
+            primeSafetyTimer.start();
+        }
+    }
+
+    Timer {
+        id: primeSafetyTimer
+        interval: 800
+        repeat: false
+        running: false
+        onTriggered: {
+            if (!background.ok) {
+                player.pause();
+                if (background.restartOnResume) {
+                    try { player.position = 0; } catch(e) {}
+                }
+            }
+        }
+    }
+
+    VideoOutput {
+        id: videoView
+        anchors.fill: parent
+    }
+    AudioOutput {
+        id: audioOut
+        volume: 0.0
+        muted: background.mute || !background.ok
+    }
+    MediaPlayer {
+        id: player
+        loops: MediaPlayer.Infinite
+        playbackRate: background.speed
+        videoOutput: videoView
+        audioOutput: audioOut
+
+        onPositionChanged: {
+            if (!primed && player.position > 0) {
+                primed = true;
+                primeSafetyTimer.stop();
+                background.sig_backendFirstFrame('QtMultimedia');
+                if (!background.ok) {
+                    player.pause();
+                    if (background.restartOnResume) {
+                        try { player.position = 0; } catch(e) {}
+                    }
+                }
+            }
+        }
+    }
+
+    FastBlur {
         id: blurEffect
         anchors.fill: videoView
         source: videoView
@@ -236,19 +410,59 @@ if os.path.isfile(qt_qml):
         }
     }
 
-    Component.onCompleted:{"""
+    Component.onCompleted:{
+        background.nowBackend = "QtMultimedia";
+        videoItem.displayModeChanged();
+        if (source && source.toString().length > 0) {
+            player.play();
+            primeSafetyTimer.start();
+        }
+    }
 
-    if "blurEffect" not in content:
-        import re
-        if "Rectangle {\n        id: fadeRect" in content:
-            content = re.sub(r'Rectangle\s*\{\s*id:\s*fadeRect[\s\S]*?Component\.onCompleted\s*:\s*\{', qt_effects_block, content)
-        elif "Component.onCompleted:{" in content:
-            content = content.replace("Component.onCompleted:{", qt_effects_block)
-        changed = True
+    function play(){
+        pauseTimer.stop();
+        if (background.restartOnResume) {
+            try { player.position = 0; } catch(e) {}
+        }
+        player.play();
+        volumeFade.start();
+    }
 
+    function pause(){
+        volumeFade.stop();
+        pauseTimer.start();
+    }
+
+    Timer{
+        id: pauseTimer
+        running: false
+        repeat: false
+        interval: 150
+        onTriggered: {
+            player.pause();
+            if (background.restartOnResume) {
+                try { player.position = 0; } catch(e) {}
+            }
+        }
+    }
+
+    Connections {
+        target: background
+        ignoreUnknownSignals: true
+        function onRestartOnResumeChanged() {
+            if (!background.ok && background.restartOnResume) {
+                try { player.position = 0; } catch(e) {}
+            }
+        }
+    }
+
+    function getMouseTarget() {
+    }
+}
+'''
     with open(qt_qml, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("[Installer] Injected FastBlur and declarative fadeRect into QtMultimedia.qml")
+        f.write(qt_full_content)
+    print("[Installer] Injected FastBlur, frame priming, and declarative fadeRect into QtMultimedia.qml")
 
 # 4. Patch Smart Video Wallpaper Reborn if present
 reborn_sys = "/usr/share/plasma/wallpapers/luisbocanegra.smart.video.wallpaper.reborn"

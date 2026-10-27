@@ -181,37 +181,70 @@ This forces an explicit edge trigger in QML, ensuring that `main.play()` is invo
 
 ---
 
-## 8. Accurate Reset-on-Resume (0:00 Restart)
+## 8. Accurate Reset-on-Resume (0:00 Restart) and Static Frame Priming
 
-### 8.1 Reborn Media Load Limitation
-Smart Video Wallpaper Reborn provides configuration entries `ResumeLastVideo` and `LastVideoPosition`. However, Reborn only evaluates these parameters during the initial media loading phase. Once a video is loaded and paused mid-playback, writing `LastVideoPosition = 0` to configuration has zero effect on the active player instance.
+### 8.1 The Initial Pause Black-Buffer Trap
+When a wallpaper is applied or initialized while an active or fullscreen window covers the display, KDE Plasma evaluates `windowModel.reqPause = true`, causing `background.ok` to initialize as `false`.
+In raw libmpv / QtMultimedia pipelines, calling `pause()` on an unstarted video player halts media negotiation before the demuxer and hardware decoder present the first frame to the GPU texture surface. The uninitialized texture remains completely black (`0.0` brightness).
+Consequently, if "Fade to black" is turned OFF, the desktop erroneously displayed a static black screen instead of the video backdrop.
 
-### 8.2 The Injected Player Position Reset
-To support the feature "Restart animation from beginning on resume", Animated Linux patches `pauseTimer` and `playTimer` in `main.qml`:
+### 8.2 The Frame Priming Protocol
+To guarantee that a crisp, valid static video frame is ALWAYS decoded and held in GPU memory (even when the wallpaper is applied or reloaded behind full-screen windows):
+1. **Always Prime on Source Assignment**: `onSourceChanged` and `Component.onCompleted` immediately initiate `player.play()`.
+2. **First-Frame Catch & Pause**:
+   - In `Mpv.qml`, the `onFirstFrame` signal registers when libmpv successfully renders the initial decoded video frame into the OpenGL texture.
+   - If `!background.ok` (the desktop is currently in paused mode), the player immediately halts with `player.pause()`.
+   - If `restartOnResume` is enabled, it immediately seeks to timestamp 0:00 (`player.command(["seek", "0", "absolute"])`).
+   - A fallback safety timer (800ms) guarantees that background playback never runs indefinitely if the display is inactive.
 
-```qml
-// In pauseTimer:
-onTriggered: {
-    player.pause();
-    if (main.restartOnResume) {
-        try {
-            player.player.position = 0;
-        } catch(e) {}
-    }
-}
+### 8.3 Injected Position Reset for "Restart Animation from Beginning on Resume"
+To support the feature "Restart animation from beginning on resume" consistently across both pause, resume, and dynamic setting toggles:
 
-// In playTimer:
-onTriggered: {
-    if (main.restartOnResume) {
-        try {
-            player.player.position = 0;
-        } catch(e) {}
-    }
-    player.play();
-}
-```
+1. **When Pausing**:
+   ```qml
+   // In pauseTimer:
+   onTriggered: {
+       player.pause();
+       if (background.restartOnResume) {
+           player.command(["seek", "0", "absolute"]); // MPV
+           // or: player.position = 0; // QtMultimedia
+       }
+   }
+   ```
+   If `restartOnResume` is ON, the paused static frame is frame 0:00 (the start of the loop).
+   If `restartOnResume` is OFF, the paused static frame is the exact video frame where playback paused.
 
-This guarantees that whenever playback resumes after an occlusion pause, the video begins at timestamp 0:00 rather than continuing from the middle of an animation loop.
+2. **When Resuming**:
+   ```qml
+   function play() {
+       pauseTimer.stop();
+       if (background.restartOnResume) {
+           player.command(["seek", "0", "absolute"]);
+       }
+       player.play();
+       volumeFade.start();
+   }
+   ```
+   If `restartOnResume` is ON, playback resumes from 0:00.
+   If `restartOnResume` is OFF, playback resumes from the current paused timestamp.
+
+3. **When Toggling "Restart Animation" While Already Paused**:
+   A dedicated `Connections` listener monitors `background.restartOnResumeChanged`:
+   ```qml
+   Connections {
+       target: background
+       ignoreUnknownSignals: true
+       function onRestartOnResumeChanged() {
+           if (!background.ok && background.restartOnResume) {
+               player.command(["seek", "0", "absolute"]);
+           }
+       }
+   }
+   ```
+   Toggling "Restart animation" ON while paused immediately seeks to frame 0:00, updating the displayed static video frame. Toggling it OFF allows the static frame to remain at the current video position.
+
+4. **When Toggling "Fade to Black" While Already Paused**:
+   The declarative hardware overlay `opacity: (background.inactiveBlack && !background.ok) ? 1.0 : 0.0` updates instantly. When toggled OFF, `opacity` becomes `0.0`, immediately revealing the underlying primed static video frame without requiring a player reload.
 
 ---
 

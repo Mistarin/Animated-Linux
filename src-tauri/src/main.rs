@@ -1412,6 +1412,14 @@ fn is_window_maximized(window: tauri::WebviewWindow) -> bool {
     window.is_maximized().unwrap_or(false)
 }
 
+#[tauri::command]
+fn start_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    if let Ok(true) = window.is_maximized() {
+        let _ = window.unmaximize();
+    }
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
 static SHOULD_EXIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[tauri::command]
@@ -1753,6 +1761,7 @@ fn main() {
             minimize_window,
             toggle_maximize_window,
             is_window_maximized,
+            start_drag,
             hide_window,
             exit_app,
             safe_exit_app,

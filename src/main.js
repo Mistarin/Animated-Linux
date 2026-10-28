@@ -2023,6 +2023,58 @@ function setupWindowControls() {
     });
   }
 
+  // Window drag handling for frameless header and navigation
+  const handleWindowDrag = async (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, input, select, textarea, .win-btn, .window-controls, .nav-tab, a, .modal, .modal-backdrop')) {
+      return;
+    }
+    try {
+      await invoke('start_drag');
+      setTimeout(updateMaximizeState, 80);
+    } catch (err) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().startDragging();
+      } catch (e2) {
+        console.warn('Window drag failed:', e2);
+      }
+    }
+  };
+
+  if (headerEl) {
+    headerEl.addEventListener('mousedown', handleWindowDrag);
+  }
+  const navBarEl = document.querySelector('.nav-bar');
+  if (navBarEl) {
+    navBarEl.addEventListener('mousedown', handleWindowDrag);
+  }
+
+  // Frameless window edge and corner resize handles
+  const setupResizeHandles = async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const appWindow = getCurrentWindow();
+      const handles = document.querySelectorAll('.resize-handle');
+      handles.forEach((handle) => {
+        handle.addEventListener('mousedown', async (e) => {
+          if (e.button !== 0) return;
+          const dir = handle.dataset.direction;
+          if (dir) {
+            try {
+              await appWindow.startResizeDragging(dir);
+            } catch (err) {
+              console.warn('startResizeDragging failed:', err);
+            }
+          }
+        });
+      });
+    } catch (err) {
+      console.warn('Failed to bind resize handles:', err);
+    }
+  };
+  setupResizeHandles();
+
   window.addEventListener('resize', () => {
     updateMaximizeState();
   });

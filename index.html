@@ -11,6 +11,16 @@
     <link rel="stylesheet" href="/src/styles/theme.css" />
   </head>
   <body>
+    <!-- Frameless Window Edge Resize Handles -->
+    <div class="resize-handle top" data-direction="North"></div>
+    <div class="resize-handle bottom" data-direction="South"></div>
+    <div class="resize-handle left" data-direction="West"></div>
+    <div class="resize-handle right" data-direction="East"></div>
+    <div class="resize-handle top-left" data-direction="NorthWest"></div>
+    <div class="resize-handle top-right" data-direction="NorthEast"></div>
+    <div class="resize-handle bottom-left" data-direction="SouthWest"></div>
+    <div class="resize-handle bottom-right" data-direction="SouthEast"></div>
+
     <!-- Top Header -->
     <header class="header" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>
@@ -35,7 +45,7 @@
     </header>
 
     <!-- Navigation Bar -->
-    <nav class="nav-bar">
+    <nav class="nav-bar" data-tauri-drag-region>
       <div class="nav-tab active" data-tab="library" id="tab-btn-library">
         <span id="icon-tab-library"></span>
         <span>My Library</span>
